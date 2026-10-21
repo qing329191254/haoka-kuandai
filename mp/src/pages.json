@@ -1,0 +1,99 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "派客邦",
+        "navigationBarBackgroundColor": "#D8EAFF"
+      }
+    },
+    {
+      "path": "pages/merchant/apply",
+      "style": {
+        "navigationBarTitleText": "商家入驻申请"
+      }
+    },
+    {
+      "path": "pages/merchant/audit",
+      "style": {
+        "navigationBarTitleText": "入驻审核"
+      }
+    },
+    {
+      "path": "pages/merchant/home",
+      "style": {
+        "navigationBarTitleText": "商家工作台"
+      }
+    },
+    {
+      "path": "pages/merchant/techs",
+      "style": {
+        "navigationBarTitleText": "上门师傅",
+        "onReachBottomDistance": 80
+      }
+    },
+    {
+      "path": "pages/merchant/tech-edit",
+      "style": {
+        "navigationBarTitleText": "编辑师傅"
+      }
+    },
+    {
+      "path": "pages/merchant/pool",
+      "style": {
+        "navigationBarTitleText": "订单列表",
+        "onReachBottomDistance": 80
+      }
+    },
+    {
+      "path": "pages/merchant/follow-up",
+      "style": {
+        "navigationBarTitleText": "跟进"
+      }
+    },
+    {
+      "path": "pages/merchant/dispatch",
+      "style": {
+        "navigationBarTitleText": "派单给师傅",
+        "onReachBottomDistance": 80
+      }
+    },
+    {
+      "path": "pages/merchant/boss-pc",
+      "style": {
+        "navigationBarTitleText": "电脑端开户"
+      }
+    },
+    {
+      "path": "pages/tech/home",
+      "style": {
+        "navigationBarTitleText": "师傅工作台"
+      }
+    },
+    {
+      "path": "pages/tech/tasks",
+      "style": {
+        "navigationBarTitleText": "我的任务",
+        "onReachBottomDistance": 80
+      }
+    },
+    {
+      "path": "pages/tech/detail",
+      "style": {
+        "navigationBarTitleText": "任务详情"
+      }
+    },
+    {
+      "path": "pages/order/detail",
+      "style": {
+        "navigationBarTitleText": "订单详情"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "派客邦",
+    "navigationBarBackgroundColor": "#D6E8FB",
+    "backgroundColor": "#E9F0F8"
+  }
+}

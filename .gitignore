@@ -1,0 +1,46 @@
+# secrets and local env
+.env
+.env.local
+.env.*.local
+**/.env
+!**/.env.example
+!**/.env.*.example
+
+# machine-specific and signing
+**/local.properties
+**/key.properties
+**/*.jks
+**/*.keystore
+**/*.pem
+**/*.p12
+
+# deploy snapshots and scratch files
+_server_upload/
+_tmp_*/
+_tmp_*
+server-deploy.zip
+*.zip
+
+# python
+__pycache__/
+.venv/
+venv/
+*.py[cod]
+*.db
+
+# node / frontend build
+node_modules/
+dist/
+admin_dist/
+
+# typescript build cache
+*.tsbuildinfo
+
+# logs
+*.log
+uvicorn.out.log
+uvicorn.err.log
+
+# uploaded user files
+server/uploads/*
+!server/uploads/.gitkeep
