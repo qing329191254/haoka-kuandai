@@ -66,7 +66,7 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import AppFeedback from '@/components/AppFeedback.vue'
 import { uploadImage } from '@/api/http'
 import { STATUS_LABEL, orderBizLabel, type MpOrder } from '@/types/order'
-import { showConfirm, showToast } from '@/store/feedback'
+import { showConfirm, showToast, withLoading } from '@/store/feedback'
 import { canDeliver, fetchOrder, techAccept, techBossMobileOpen, techDeliverFail, techDeliverSuccess } from '@/store/orders'
 import { requireRole } from '@/store/session'
 
@@ -102,7 +102,7 @@ onShow(reload)
 
 async function accept() {
   if (!order.value) return
-  if (await techAccept(order.value.id)) {
+  if (await withLoading(() => techAccept(order.value!.id), '提交中…')) {
     goBackAfterSuccess('已接单', 'serving')
   } else {
     showToast('接单失败（可能已被他人接走）', { type: 'error' })
@@ -111,7 +111,7 @@ async function accept() {
 
 async function bossOpen() {
   if (!order.value) return
-  if (await techBossMobileOpen(order.value.id)) {
+  if (await withLoading(() => techBossMobileOpen(order.value!.id), '提交中…')) {
     goBackAfterSuccess('开户成功', 'serving')
   } else {
     showToast('当前不可开户', { type: 'error' })
@@ -139,17 +139,17 @@ async function deliverOk() {
     showToast('交付成功请至少上传 1 张现场照片', { type: 'error' })
     return
   }
-  uni.showLoading({ title: '上传照片…', mask: true })
   let uploaded: string[]
   try {
-    uploaded = await Promise.all(photos.value.map((path) => uploadImage(path)))
+    uploaded = await withLoading(
+      () => Promise.all(photos.value.map((path) => uploadImage(path))),
+      '上传中…',
+    )
   } catch (e) {
-    uni.hideLoading()
     showToast(e instanceof Error ? e.message : '照片上传失败', { type: 'error' })
     return
   }
-  uni.hideLoading()
-  if (await techDeliverSuccess(order.value.id, uploaded)) {
+  if (await withLoading(() => techDeliverSuccess(order.value!.id, uploaded), '提交中…')) {
     goBackAfterSuccess('交付成功', 'done')
   } else {
     showToast('提交失败', { type: 'error' })
@@ -179,7 +179,7 @@ async function deliverFail() {
         return
       }
       if (!order.value) return
-      if (await techDeliverFail(order.value.id, reason)) {
+      if (await withLoading(() => techDeliverFail(order.value!.id, reason), '提交中…')) {
         goBackAfterSuccess('已交回商家', 'returned')
       } else {
         showToast('提交失败', { type: 'error' })

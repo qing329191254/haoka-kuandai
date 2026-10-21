@@ -50,7 +50,7 @@ export function request<T>(opts: { url: string; method?: 'GET' | 'POST' | 'PUT' 
         resolve(res.data as T)
       },
       fail() {
-        reject(new Error('网络异常，请确认后端已启动（微信开发者工具需勾选不校验合法域名）'))
+        reject(new Error('网络异常，请稍后重试'))
       },
     })
   })

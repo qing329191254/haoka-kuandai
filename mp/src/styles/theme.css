@@ -60,3 +60,12 @@ page {
 .btn-primary::after {
   border: none;
 }
+
+/* 工作台入口等可点区域的按下反馈 */
+.tap-feedback {
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.tap-feedback:active {
+  opacity: 0.72;
+  transform: scale(0.985);
+}

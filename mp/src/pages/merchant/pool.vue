@@ -22,7 +22,9 @@
       @update:active-chip="onFilterChange"
     />
 
-    <view v-for="o in visible" :key="o.id" class="card surface" @click="open(o)">
+    <ListRefreshBar :refreshing="refreshing" :boot-loading="bootLoading" />
+
+    <view v-for="o in visible" v-show="!bootLoading" :key="o.id" class="card surface" @click="open(o)">
       <view class="row">
         <text class="biz">{{ orderBizLabel(o) }}</text>
         <text class="status">{{ STATUS_LABEL[o.status] }}</text>
@@ -92,8 +94,9 @@
       </view>
     </view>
 
-    <view v-if="!filtered.length" class="empty">{{ emptyText }}</view>
+    <view v-if="!bootLoading && !filtered.length" class="empty">{{ emptyText }}</view>
     <ListLoadMore
+      v-if="!bootLoading"
       :total="total"
       :shown="visible.length"
       :has-more="hasMore"
@@ -110,10 +113,12 @@ import { onLoad, onPageScroll, onReachBottom, onShow } from '@dcloudio/uni-app'
 import AppFeedback from '@/components/AppFeedback.vue'
 import BackToTop from '@/components/BackToTop.vue'
 import ListLoadMore from '@/components/ListLoadMore.vue'
+import ListRefreshBar from '@/components/ListRefreshBar.vue'
 import OrderListToolbar, { type FilterChip } from '@/components/OrderListToolbar.vue'
+import { useListRefresh } from '@/composables/useListRefresh'
 import { usePagedList } from '@/composables/usePagedList'
 import { STATUS_LABEL, orderBizLabel, skipTechDispatch, type BizType, type MpOrder } from '@/types/order'
-import { showConfirm, showToast } from '@/store/feedback'
+import { showConfirm, showToast, withLoading } from '@/store/feedback'
 import {
   acceptByMerchant,
   listOrders,
@@ -150,8 +155,9 @@ const stage = ref<WorkStage>('entry')
 const tab = ref<TabKey>('pending')
 const keyword = ref('')
 const bizChip = ref('all')
-const orders = ref<MpOrder[]>([])
+const orders = ref<MpOrder[]>(sortOrdersByTime(listOrders()))
 const showTop = ref(false)
+const { refreshing, bootLoading, runRefresh } = useListRefresh()
 
 const stageTitle = computed(() => WORK_STAGE_TITLE[stage.value])
 
@@ -168,9 +174,10 @@ const tabs = computed((): { key: TabKey; label: string }[] => {
   ]
 })
 
-function refresh() {
+async function refresh() {
   if (!requireRole('merchant')) return
-  refreshOrders().then(() => {
+  await runRefresh(orders.value.length > 0 || listOrders().length > 0, async () => {
+    await refreshOrders()
     orders.value = sortOrdersByTime(listOrders())
   })
 }
@@ -275,7 +282,8 @@ function bossPcLabel(o: MpOrder) {
 }
 
 async function accept(id: string) {
-  if (await acceptByMerchant(id)) {
+  const ok = await withLoading(() => acceptByMerchant(id), '提交中…')
+  if (ok) {
     showToast('接单成功', { type: 'success' })
     refresh()
   } else {
@@ -291,7 +299,7 @@ async function remoteDone(id: string) {
     tone: 'primary',
   })
   if (!ok) return
-  if (await merchantCompleteRemote(id)) {
+  if (await withLoading(() => merchantCompleteRemote(id), '提交中…')) {
     showToast('已办结', { type: 'success' })
     refresh()
   } else {
@@ -307,7 +315,7 @@ async function markDispatch(id: string) {
     tone: 'warn',
   })
   if (!ok) return
-  if (await merchantMarkNeedsDispatch(id)) {
+  if (await withLoading(() => merchantMarkNeedsDispatch(id), '提交中…')) {
     showToast('已提交', { type: 'success' })
     refresh()
   } else {
@@ -316,7 +324,7 @@ async function markDispatch(id: string) {
 }
 
 async function resume(id: string) {
-  if (await merchantResumeProcessing(id)) {
+  if (await withLoading(() => merchantResumeProcessing(id), '提交中…')) {
     showToast('已恢复', { type: 'success' })
     refresh()
   } else {

@@ -99,8 +99,8 @@ export const PERMISSION_TREE: PermNode[] = [
       { id: 'users:edit', label: '停用 / 启用用户' },
       { id: 'service:view', label: '查看客服配置' },
       { id: 'service:edit', label: '编辑客服配置' },
-      { id: 'feedback:view', label: '查看客服留言' },
-      { id: 'feedback:edit', label: '处理客服留言' },
+      { id: 'feedback:view', label: '查看在线客服 / 意见反馈' },
+      { id: 'feedback:edit', label: '回复在线客服 / 处理意见反馈' },
       { id: 'content:view', label: '查看协议与帮助' },
       { id: 'content:edit', label: '编辑协议与帮助' },
     ],
@@ -197,7 +197,7 @@ export const mockRoles: Role[] = [
     code: 'service',
     builtin: true,
     permissions: [...SERVICE_PERMISSIONS],
-    remark: '客服留言、FAQ 配置与订单协助',
+    remark: '在线客服、FAQ 配置与订单协助',
   },
 ]
 

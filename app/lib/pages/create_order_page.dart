@@ -10,6 +10,7 @@ import 'package:haoka_app/models/order.dart';
 import 'package:haoka_app/models/product.dart';
 import 'package:haoka_app/store/auth_store.dart';
 import 'package:haoka_app/store/order_store.dart';
+import 'package:haoka_app/widgets/app_loading.dart';
 import 'package:haoka_app/widgets/app_surface.dart';
 import 'package:haoka_app/widgets/app_toast.dart';
 import 'package:haoka_app/widgets/biz_visual.dart';
@@ -226,25 +227,29 @@ class _CreateOrderPageState extends State<CreateOrderPage> {
     }
 
     final user = context.read<AuthStore>().user;
-    final err = await context.read<OrderStore>().addOrder(
-      bizType: widget.bizType,
-      productId: _pickedPackage?.id,
-      customerName: _name.text.trim(),
-      customerPhone: _phone.text.trim(),
-      address: fullAddress.isEmpty ? (region?.label ?? '') : fullAddress,
-      productName: productName,
-      carrier: carrier,
-      remark: _remark.text.trim().isEmpty ? null : _remark.text.trim(),
-      province: region?.province,
-      city: region?.city,
-      district: region?.district,
-      assignedMerchantId: merchant?.id,
-      assignedMerchantName: merchant?.name,
-      createdByUserId: user?.id,
-      commission: _pickedPackage?.commission,
-      orderIntent: _isBroadband ? (_confirmed ? '确定套餐' : '意向单') : null,
-      phoneBrand: _isContract ? _brand : null,
-      priceRange: _isContract ? _priceRange : null,
+    final err = await AppLoading.run(
+      context,
+      () => context.read<OrderStore>().addOrder(
+        bizType: widget.bizType,
+        productId: _pickedPackage?.id,
+        customerName: _name.text.trim(),
+        customerPhone: _phone.text.trim(),
+        address: fullAddress.isEmpty ? (region?.label ?? '') : fullAddress,
+        productName: productName,
+        carrier: carrier,
+        remark: _remark.text.trim().isEmpty ? null : _remark.text.trim(),
+        province: region?.province,
+        city: region?.city,
+        district: region?.district,
+        assignedMerchantId: merchant?.id,
+        assignedMerchantName: merchant?.name,
+        createdByUserId: user?.id,
+        commission: _pickedPackage?.commission,
+        orderIntent: _isBroadband ? (_confirmed ? '确定套餐' : '意向单') : null,
+        phoneBrand: _isContract ? _brand : null,
+        priceRange: _isContract ? _priceRange : null,
+      ),
+      message: '提交中…',
     );
     if (!mounted) return;
     if (err != null) {

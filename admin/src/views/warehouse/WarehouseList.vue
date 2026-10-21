@@ -73,6 +73,7 @@ import { useAdminStore } from '@/stores/admin'
 import { usePermission } from '@/composables/usePermission'
 import { includesKw, uniq, usePager } from '@/composables/usePager'
 import type { WarehouseItem } from '@/types/stock'
+import { withLoading } from '@/utils/loading'
 
 const store = useAdminStore()
 const router = useRouter()
@@ -137,7 +138,7 @@ async function save() {
   }
   const isNew = !form.id
   try {
-    await store.upsertWarehouse({ ...form, id: form.id || `w${Date.now()}` })
+    await withLoading(() => store.upsertWarehouse({ ...form, id: form.id || `w${Date.now()}` }), '保存中…')
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '保存失败')
     return

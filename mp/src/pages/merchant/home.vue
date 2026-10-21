@@ -9,15 +9,15 @@
         <text class="logout" @click="onLogout">退出</text>
       </view>
       <view class="stats">
-        <view class="stat" @click="goStage('entry')">
+        <view class="stat tap-feedback" @click="goStage('entry')">
           <text class="n">{{ stats.entry }}</text>
           <text class="l">待接单</text>
         </view>
-        <view class="stat" @click="goStage('process')">
+        <view class="stat tap-feedback" @click="goStage('process')">
           <text class="n">{{ stats.process }}</text>
           <text class="l">办理中</text>
         </view>
-        <view class="stat" @click="goStage('dispatch')">
+        <view class="stat tap-feedback" @click="goStage('dispatch')">
           <text class="n">{{ stats.dispatch }}</text>
           <text class="l">派单上门</text>
         </view>
@@ -26,7 +26,7 @@
 
     <text class="section-title">工作台</text>
     <view class="grid">
-      <view class="cell surface" @click="goStage('entry')">
+      <view class="cell surface tap-feedback" @click="goStage('entry')">
         <view class="icon">录</view>
         <view class="cell-body">
           <text class="cell-t">订单录入</text>
@@ -34,7 +34,7 @@
         </view>
         <text class="chev">›</text>
       </view>
-      <view class="cell surface" @click="goStage('process')">
+      <view class="cell surface tap-feedback" @click="goStage('process')">
         <view class="icon alt2">办</view>
         <view class="cell-body">
           <text class="cell-t">订单办理</text>
@@ -42,7 +42,7 @@
         </view>
         <text class="chev">›</text>
       </view>
-      <view class="cell surface" @click="goStage('dispatch')">
+      <view class="cell surface tap-feedback" @click="goStage('dispatch')">
         <view class="icon alt">派</view>
         <view class="cell-body">
           <text class="cell-t">派单上门</text>
@@ -50,7 +50,7 @@
         </view>
         <text class="chev">›</text>
       </view>
-      <view class="cell surface" @click="goTechs">
+      <view class="cell surface tap-feedback" @click="goTechs">
         <view class="icon alt3">师</view>
         <view class="cell-body">
           <text class="cell-t">上门师傅</text>
@@ -71,6 +71,7 @@ import AppFeedback from '@/components/AppFeedback.vue'
 import { showConfirm } from '@/store/feedback'
 import { merchantStats, type MerchantStats } from '@/store/orders'
 import { logout, requireRole, type MpSession } from '@/store/session'
+import { hideMpHomeButton } from '@/utils/hideHomeButton'
 import type { WorkStage } from '@/utils/workStage'
 
 const session = ref<MpSession | null>(null)
@@ -87,6 +88,7 @@ function refreshStats() {
 }
 
 onShow(() => {
+  hideMpHomeButton()
   session.value = requireRole('merchant')
   if (session.value) refreshStats()
 })

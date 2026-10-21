@@ -81,6 +81,7 @@ import {
   type MerchantApplication,
   type MerchantApplyStatus,
 } from '@/types/order'
+import { withLoading } from '@/utils/loading'
 
 const store = useAdminStore()
 const { can } = usePermission()
@@ -126,7 +127,7 @@ async function onApprove(row: MerchantApplication) {
   } catch {
     return
   }
-  const err = await store.approveMerchantApplication(row.id)
+  const err = await withLoading(() => store.approveMerchantApplication(row.id), '提交中…')
   if (err) {
     ElMessage.warning(err)
     return
@@ -143,7 +144,7 @@ async function onReject(row: MerchantApplication) {
       type: 'warning',
       inputValidator: (v) => (!!v?.trim() ? true : '请填写原因'),
     })
-    const err = await store.rejectMerchantApplication(row.id, value)
+    const err = await withLoading(() => store.rejectMerchantApplication(row.id, value), '提交中…')
     if (err) {
       ElMessage.warning(err)
       return

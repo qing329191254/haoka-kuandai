@@ -87,6 +87,7 @@ import { useAdminStore } from '@/stores/admin'
 import { usePermission } from '@/composables/usePermission'
 import { includesKw, usePager } from '@/composables/usePager'
 import type { StockType } from '@/types/stock'
+import { withLoading } from '@/utils/loading'
 
 const store = useAdminStore()
 const router = useRouter()
@@ -123,14 +124,18 @@ function open(type: StockType) {
 
 function save() {
   void (async () => {
-    const err = await store.addStock({
-      type: form.type,
-      warehouseId: form.warehouseId,
-      qty: form.qty,
-      orderNo: form.orderNo || undefined,
-      operator: current.value?.name || '客服',
-      remark: form.remark,
-    })
+    const err = await withLoading(
+      () =>
+        store.addStock({
+          type: form.type,
+          warehouseId: form.warehouseId,
+          qty: form.qty,
+          orderNo: form.orderNo || undefined,
+          operator: current.value?.name || '客服',
+          remark: form.remark,
+        }),
+      '提交中…',
+    )
     if (err) {
       ElMessage.warning(err)
       return

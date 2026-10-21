@@ -73,13 +73,14 @@ import { reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
+import { withLoading } from '@/utils/loading'
 
 const router = useRouter()
 const auth = useAuthStore()
 const form = reactive({ username: 'admin', password: '123456' })
 
 async function onSubmit() {
-  const res = await auth.login(form.username, form.password)
+  const res = await withLoading(() => auth.login(form.username, form.password), '登录中…')
   if (!res.ok) {
     ElMessage.error(res.message)
     return

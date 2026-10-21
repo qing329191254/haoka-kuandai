@@ -36,7 +36,7 @@
 import { ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import AppFeedback from '@/components/AppFeedback.vue'
-import { showToast } from '@/store/feedback'
+import { showToast, withLoading } from '@/store/feedback'
 import { fetchOrder, merchantMarkFollowUp } from '@/store/orders'
 import { requireRole } from '@/store/session'
 import type { MpOrder } from '@/types/order'
@@ -68,7 +68,12 @@ async function submit() {
     showToast('请选择跟进原因', { type: 'error' })
     return
   }
-  if (await merchantMarkFollowUp(orderId.value, reason.value, nextAt.value, note.value)) {
+  if (
+    await withLoading(
+      () => merchantMarkFollowUp(orderId.value, reason.value, nextAt.value, note.value),
+      '提交中…',
+    )
+  ) {
     showToast('已保存', { type: 'success', duration: 800 })
     setTimeout(() => uni.navigateBack(), 800)
   } else {

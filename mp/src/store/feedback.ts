@@ -39,10 +39,50 @@ const confirm: ConfirmState = reactive({
   resolve: null,
 })
 
+interface LoadingState {
+  visible: boolean
+  title: string
+}
+
+const loading: LoadingState = reactive({
+  visible: false,
+  title: '加载中…',
+})
+
 let toastTimer: ReturnType<typeof setTimeout> | null = null
+let loadingDepth = 0
+/** 同步锁：挡住 Loading 挂上前的同帧连点 */
+let actionLocked = false
 
 export function feedbackState() {
-  return { toast, confirm }
+  return { toast, confirm, loading }
+}
+
+export function showLoading(title = '加载中…') {
+  loadingDepth += 1
+  loading.title = title
+  loading.visible = true
+}
+
+export function hideLoading() {
+  loadingDepth = Math.max(0, loadingDepth - 1)
+  if (loadingDepth === 0) {
+    loading.visible = false
+  }
+}
+
+export async function withLoading<T>(fn: () => Promise<T>, title = '加载中…'): Promise<T> {
+  if (actionLocked) {
+    return new Promise<T>(() => {})
+  }
+  actionLocked = true
+  showLoading(title)
+  try {
+    return await fn()
+  } finally {
+    hideLoading()
+    actionLocked = false
+  }
 }
 
 export function showToast(

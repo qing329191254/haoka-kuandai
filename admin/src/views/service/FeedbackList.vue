@@ -2,15 +2,11 @@
   <el-card>
     <template #header>
       <div class="hd">
-        <span>客服留言 / 意见反馈</span>
+        <span>意见反馈</span>
         <el-tag v-if="pendingCount" type="warning" size="small">待处理 {{ pendingCount }}</el-tag>
       </div>
     </template>
     <div class="toolbar">
-      <el-select v-model="channel" clearable placeholder="来源" style="width: 140px">
-        <el-option label="客服留言" value="service_message" />
-        <el-option label="意见反馈" value="app_feedback" />
-      </el-select>
       <el-select v-model="type" clearable placeholder="类型" style="width: 140px">
         <el-option v-for="t in types" :key="t" :label="t" :value="t" />
       </el-select>
@@ -21,13 +17,6 @@
       <el-input v-model="keyword" clearable placeholder="用户 / 联系方式 / 内容" style="width: 260px" />
     </div>
     <el-table :data="paged" stripe>
-      <el-table-column label="来源" width="100">
-        <template #default="{ row }">
-          <el-tag :type="row.channel === 'service_message' ? 'primary' : 'info'" size="small">
-            {{ row.channel === 'service_message' ? '客服留言' : '意见反馈' }}
-          </el-tag>
-        </template>
-      </el-table-column>
       <el-table-column prop="type" label="类型" width="110" />
       <el-table-column prop="userName" label="用户" width="90" />
       <el-table-column prop="contact" label="联系方式" width="130" />
@@ -54,9 +43,6 @@
   <el-drawer v-model="visible" :title="detailTitle" size="460px">
     <template v-if="current">
       <el-descriptions :column="1" border>
-        <el-descriptions-item label="来源">
-          {{ current.channel === 'service_message' ? '客服留言' : '意见反馈' }}
-        </el-descriptions-item>
         <el-descriptions-item label="类型">{{ current.type }}</el-descriptions-item>
         <el-descriptions-item label="用户">{{ current.userName || '—' }}</el-descriptions-item>
         <el-descriptions-item label="联系方式">{{ current.contact || '—' }}</el-descriptions-item>
@@ -84,7 +70,7 @@
       </template>
 
       <template v-else-if="can('feedback:edit')">
-        <h4 class="block-title">回复用户（将在 App 留言记录中展示）</h4>
+        <h4 class="block-title">回复用户（将在 App 意见反馈中展示）</h4>
         <el-input
           v-model="form.reply"
           type="textarea"
@@ -106,7 +92,7 @@
         />
         <div class="actions">
           <el-button @click="visible = false">取消</el-button>
-          <el-button type="primary" :loading="saving" @click="submitHandle">回复并标记处理</el-button>
+          <el-button type="primary" @click="submitHandle">回复并标记处理</el-button>
         </div>
       </template>
     </template>
@@ -121,31 +107,33 @@ import { useAdminStore } from '@/stores/admin'
 import { usePermission } from '@/composables/usePermission'
 import { includesKw, usePager } from '@/composables/usePager'
 import type { FeedbackItem } from '@/types/order'
+import { withLoading } from '@/utils/loading'
 
 const store = useAdminStore()
 const { can } = usePermission()
 const types: FeedbackItem['type'][] = ['功能建议', '体验问题', '订单相关', '入驻咨询', '号卡/宽带', '其他']
 const type = ref<FeedbackItem['type']>()
 const status = ref<FeedbackItem['status']>()
-const channel = ref<FeedbackItem['channel']>()
 const keyword = ref('')
 const visible = ref(false)
-const saving = ref(false)
 const current = ref<FeedbackItem | null>(null)
 const form = reactive({ reply: '', note: '' })
 
 const pendingCount = computed(
-  () => store.feedbacks.filter((f) => f.status === 'pending').length,
+  () =>
+    store.feedbacks.filter(
+      (f) => (f.channel || 'app_feedback') === 'app_feedback' && f.status === 'pending',
+    ).length,
 )
 
 const detailTitle = computed(() => {
-  if (!current.value) return '留言详情'
-  return current.value.status === 'pending' ? '处理留言' : '留言详情'
+  if (!current.value) return '反馈详情'
+  return current.value.status === 'pending' ? '处理反馈' : '反馈详情'
 })
 
 const { page, pageSize, filtered, paged } = usePager(() =>
   store.feedbacks.filter((f) => {
-    if (channel.value && (f.channel || 'app_feedback') !== channel.value) return false
+    if ((f.channel || 'app_feedback') !== 'app_feedback') return false
     if (type.value && f.type !== type.value) return false
     if (status.value && f.status !== status.value) return false
     const k = keyword.value.trim()
@@ -158,7 +146,7 @@ const { page, pageSize, filtered, paged } = usePager(() =>
   }),
 )
 
-watch([type, status, channel, keyword], () => {
+watch([type, status, keyword], () => {
   page.value = 1
 })
 
@@ -175,25 +163,26 @@ async function submitHandle() {
     ElMessage.warning('请填写回复内容')
     return
   }
-  saving.value = true
   try {
-    await store.handleFeedback(current.value.id, {
-      reply: form.reply.trim(),
-      note: form.note.trim(),
-    })
+    await withLoading(
+      () =>
+        store.handleFeedback(current.value!.id, {
+          reply: form.reply.trim(),
+          note: form.note.trim(),
+        }),
+      '提交中…',
+    )
     ElMessage.success('已回复并标记处理')
     visible.value = false
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '处理失败')
-  } finally {
-    saving.value = false
   }
 }
 
 async function reopen() {
   if (!current.value) return
   try {
-    await store.reopenFeedback(current.value.id)
+    await withLoading(() => store.reopenFeedback(current.value!.id), '提交中…')
     ElMessage.success('已重新打开')
     const next = store.feedbacks.find((f) => f.id === current.value?.id)
     if (next) openDetail(next)

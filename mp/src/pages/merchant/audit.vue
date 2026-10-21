@@ -20,10 +20,12 @@ import { onShow } from '@dcloudio/uni-app'
 import AppFeedback from '@/components/AppFeedback.vue'
 import { showConfirm } from '@/store/feedback'
 import { getSession, clearSession, logout, refreshMerchantSession, type MpSession } from '@/store/session'
+import { hideMpHomeButton } from '@/utils/hideHomeButton'
 
 const session = ref<MpSession | null>(null)
 
 onShow(async () => {
+  hideMpHomeButton()
   session.value = (await refreshMerchantSession()) || getSession()
   if (!session.value || session.value.role !== 'merchant') {
     uni.reLaunch({ url: '/pages/index/index' })

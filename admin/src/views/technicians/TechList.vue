@@ -110,6 +110,7 @@ import { useAdminStore } from '@/stores/admin'
 import { usePermission } from '@/composables/usePermission'
 import { includesKw, usePager } from '@/composables/usePager'
 import { labelBiz, regionLabel, type EnableStatus, type Technician } from '@/types/order'
+import { withLoading } from '@/utils/loading'
 
 const store = useAdminStore()
 const { can } = usePermission()
@@ -200,11 +201,15 @@ async function save() {
     return
   }
   try {
-    await store.upsertTechnician({
-      ...form,
-      id: form.id || `t${Date.now()}`,
-      skills: [...form.skills],
-    })
+    await withLoading(
+      () =>
+        store.upsertTechnician({
+          ...form,
+          id: form.id || `t${Date.now()}`,
+          skills: [...form.skills],
+        }),
+      '保存中…',
+    )
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '保存失败')
     return
@@ -224,7 +229,7 @@ async function onRemove(row: Technician) {
     return
   }
   try {
-    await store.removeTechnician(row.id)
+    await withLoading(() => store.removeTechnician(row.id), '删除中…')
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '删除失败')
     return

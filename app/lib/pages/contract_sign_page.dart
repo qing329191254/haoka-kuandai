@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:haoka_app/api/api_client.dart';
 import 'package:haoka_app/store/auth_store.dart';
+import 'package:haoka_app/widgets/app_loading.dart';
 import 'package:haoka_app/widgets/app_surface.dart';
 import 'package:haoka_app/widgets/app_toast.dart';
 
@@ -17,7 +18,6 @@ class ContractSignPage extends StatefulWidget {
 class _ContractSignPageState extends State<ContractSignPage> {
   final _name = TextEditingController();
   bool _agreed = false;
-  bool _loading = false;
   bool _docLoading = true;
   String _docTitle = '派客邦代理合作协议';
   String _docBody = '';
@@ -87,12 +87,14 @@ class _ContractSignPageState extends State<ContractSignPage> {
       AppToast.tip(context, '请先阅读并同意协议条款');
       return;
     }
-    setState(() => _loading = true);
-    final err = await context.read<AuthStore>().signContract(
-      signerName: _name.text,
+    final err = await AppLoading.run(
+      context,
+      () => context.read<AuthStore>().signContract(
+        signerName: _name.text,
+      ),
+      message: '签署中…',
     );
     if (!mounted) return;
-    setState(() => _loading = false);
     if (err != null) {
       AppToast.error(context, err);
       return;
@@ -236,17 +238,8 @@ class _ContractSignPageState extends State<ContractSignPage> {
           const SizedBox(height: 20),
           FilledButton(
             style: AppStyle.primaryPill,
-            onPressed: _loading || _docBody.isEmpty ? null : _sign,
-            child: _loading
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.4,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Text('确认电子签署'),
+            onPressed: _docBody.isEmpty ? null : _sign,
+            child: const Text('确认电子签署'),
           ),
         ],
       ),

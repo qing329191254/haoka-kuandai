@@ -1,4 +1,12 @@
 <template>
+  <!-- Loading -->
+  <view v-if="loading.visible" class="fb-mask loading-mask" @touchmove.stop.prevent>
+    <view class="fb-card loading-card" @click.stop>
+      <view class="fb-spinner" />
+      <text class="fb-title">{{ loading.title }}</text>
+    </view>
+  </view>
+
   <!-- Toast -->
   <view v-if="toast.visible" class="fb-mask toast-mask" @click="hideToast">
     <view class="fb-card toast-card" :class="toast.type" @click.stop>
@@ -30,7 +38,7 @@
 import { computed } from 'vue'
 import { feedbackState, hideToast, resolveConfirm } from '@/store/feedback'
 
-const { toast, confirm } = feedbackState()
+const { toast, confirm, loading } = feedbackState()
 
 const toastIcon = computed(() => {
   if (toast.type === 'success') return '✓'
@@ -61,6 +69,9 @@ function onOk() {
 .toast-mask {
   background: rgba(8, 20, 40, 0.28);
 }
+.loading-mask {
+  z-index: 2100;
+}
 .fb-card {
   width: 520rpx;
   padding: 44rpx 36rpx 40rpx;
@@ -79,6 +90,19 @@ function onOk() {
 .toast-card {
   width: 400rpx;
   padding: 40rpx 32rpx 36rpx;
+}
+.loading-card {
+  width: 280rpx;
+  padding: 48rpx 32rpx 40rpx;
+}
+.fb-spinner {
+  width: 64rpx;
+  height: 64rpx;
+  margin-bottom: 24rpx;
+  border-radius: 50%;
+  border: 6rpx solid rgba(30, 136, 229, 0.18);
+  border-top-color: #1e88e5;
+  animation: fb-spin 0.75s linear infinite;
 }
 .fb-icon {
   width: 92rpx;
@@ -172,6 +196,11 @@ function onOk() {
   to {
     opacity: 1;
     transform: scale(1) translateY(0);
+  }
+}
+@keyframes fb-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 </style>

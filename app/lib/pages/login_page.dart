@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:haoka_app/store/auth_store.dart';
+import 'package:haoka_app/widgets/app_loading.dart';
 import 'package:haoka_app/widgets/app_toast.dart';
 
 /// 登录首页：手机号 + 密码（代理入驻账号）
@@ -21,7 +22,6 @@ class _LoginPageState extends State<LoginPage> {
   final _phone = TextEditingController();
   final _password = TextEditingController();
   bool _obscure = true;
-  bool _loading = false;
 
   @override
   void dispose() {
@@ -32,13 +32,15 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _loading = true);
-    final err = await context.read<AuthStore>().login(
-      phone: _phone.text,
-      password: _password.text,
+    final err = await AppLoading.run(
+      context,
+      () => context.read<AuthStore>().login(
+        phone: _phone.text,
+        password: _password.text,
+      ),
+      message: '登录中…',
     );
     if (!mounted) return;
-    setState(() => _loading = false);
     if (err != null) {
       AppToast.error(context, err);
       return;
@@ -125,6 +127,8 @@ class _LoginPageState extends State<LoginPage> {
                             controller: _phone,
                             keyboardType: TextInputType.phone,
                             style: const TextStyle(color: Colors.white),
+                            cursorColor: Colors.white,
+                            cursorErrorColor: Colors.white,
                             decoration: _inputDecoration(
                               label: '手机号',
                               icon: Icons.phone_iphone,
@@ -140,6 +144,8 @@ class _LoginPageState extends State<LoginPage> {
                             controller: _password,
                             obscureText: _obscure,
                             style: const TextStyle(color: Colors.white),
+                            cursorColor: Colors.white,
+                            cursorErrorColor: Colors.white,
                             decoration: _inputDecoration(
                               label: '密码',
                               icon: Icons.lock_outline,
@@ -181,38 +187,14 @@ class _LoginPageState extends State<LoginPage> {
                                 borderRadius: BorderRadius.circular(14),
                               ),
                             ),
-                            onPressed: _loading ? () {} : _submit,
-                            child: _loading
-                                ? const Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2.4,
-                                          color: _brandDeep,
-                                        ),
-                                      ),
-                                      SizedBox(width: 10),
-                                      Text(
-                                        '登录中…',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                          color: _brandDeep,
-                                        ),
-                                      ),
-                                    ],
-                                  )
-                                : const Text(
-                                    '登录',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
+                            onPressed: _submit,
+                            child: const Text(
+                              '登录',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 16),
                           OutlinedButton(

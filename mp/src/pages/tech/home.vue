@@ -9,19 +9,19 @@
         <text class="logout" @click="onLogout">退出</text>
       </view>
       <view class="stats">
-        <view class="stat" @click="goTasks('todo')">
+        <view class="stat tap-feedback" @click="goTasks('todo')">
           <text class="n">{{ stats.todo }}</text>
           <text class="l">待上门</text>
         </view>
-        <view class="stat" @click="goTasks('serving')">
+        <view class="stat tap-feedback" @click="goTasks('serving')">
           <text class="n">{{ stats.serving }}</text>
           <text class="l">服务中</text>
         </view>
-        <view class="stat" @click="goTasks('done')">
+        <view class="stat tap-feedback" @click="goTasks('done')">
           <text class="n">{{ stats.done }}</text>
           <text class="l">已完成</text>
         </view>
-        <view class="stat" @click="goTasks('returned')">
+        <view class="stat tap-feedback" @click="goTasks('returned')">
           <text class="n">{{ stats.returned }}</text>
           <text class="l">已退回</text>
         </view>
@@ -30,7 +30,7 @@
 
     <text class="section-title">按业务类型查看任务</text>
     <view class="grid">
-      <view v-for="g in groups" :key="g.key" class="cell surface" @click="goBiz(g.key)">
+      <view v-for="g in groups" :key="g.key" class="cell surface tap-feedback" @click="goBiz(g.key)">
         <view class="icon">{{ g.label.slice(0, 1) }}</view>
         <view class="cell-body">
           <text class="cell-t">{{ g.label }}</text>
@@ -58,12 +58,14 @@ import AppFeedback from '@/components/AppFeedback.vue'
 import { showConfirm } from '@/store/feedback'
 import { techBizGroups, techStats } from '@/store/orders'
 import { logout, requireRole, type MpSession } from '@/store/session'
+import { hideMpHomeButton } from '@/utils/hideHomeButton'
 
 const session = ref<MpSession | null>(null)
 const stats = ref({ todo: 0, serving: 0, done: 0, returned: 0 })
 const groups = ref<{ key: string; label: string; todo: number; serving: number; returned: number }[]>([])
 
 onShow(async () => {
+  hideMpHomeButton()
   session.value = requireRole('technician')
   if (session.value) {
     stats.value = await techStats()

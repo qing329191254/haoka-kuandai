@@ -8,6 +8,19 @@
       }
     },
     {
+      "path": "pages/login/login",
+      "style": {
+        "navigationBarTitleText": "登录",
+        "navigationBarBackgroundColor": "#D8EAFF"
+      }
+    },
+    {
+      "path": "pages/doc/index",
+      "style": {
+        "navigationBarTitleText": "隐私政策"
+      }
+    },
+    {
       "path": "pages/guide/index",
       "style": {
         "navigationBarTitleText": "使用说明",
@@ -101,6 +114,9 @@
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "派客邦",
     "navigationBarBackgroundColor": "#D6E8FB",
-    "backgroundColor": "#E9F0F8"
+    "backgroundColor": "#E9F0F8",
+    "homeButton": false,
+    "enableShareAppMessage": true,
+    "enableShareTimeline": true
   }
 }

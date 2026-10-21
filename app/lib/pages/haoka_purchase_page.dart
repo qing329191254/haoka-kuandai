@@ -6,6 +6,7 @@ import 'package:haoka_app/models/order.dart';
 import 'package:haoka_app/models/product.dart';
 import 'package:haoka_app/store/auth_store.dart';
 import 'package:haoka_app/store/order_store.dart';
+import 'package:haoka_app/widgets/app_loading.dart';
 import 'package:haoka_app/widgets/app_surface.dart';
 import 'package:haoka_app/widgets/app_toast.dart';
 import 'package:haoka_app/widgets/region_picker.dart';
@@ -53,19 +54,23 @@ class _HaokaPurchasePageState extends State<HaokaPurchasePage> {
     final region = _region!;
     final detail = _address.text.trim();
     final user = context.read<AuthStore>().user;
-    final err = await context.read<OrderStore>().addOrder(
-      bizType: BizType.haoka,
-      productId: widget.product.id,
-      customerName: _name.text.trim(),
-      customerPhone: _phone.text.trim(),
-      address: '${region.province}${region.city}${region.district}$detail',
-      productName: widget.product.name,
-      carrier: widget.product.carrier,
-      province: region.province,
-      city: region.city,
-      district: region.district,
-      createdByUserId: user?.id,
-      customerIdNo: _idNo.text.trim().isEmpty ? null : _idNo.text.trim(),
+    final err = await AppLoading.run(
+      context,
+      () => context.read<OrderStore>().addOrder(
+        bizType: BizType.haoka,
+        productId: widget.product.id,
+        customerName: _name.text.trim(),
+        customerPhone: _phone.text.trim(),
+        address: '${region.province}${region.city}${region.district}$detail',
+        productName: widget.product.name,
+        carrier: widget.product.carrier,
+        province: region.province,
+        city: region.city,
+        district: region.district,
+        createdByUserId: user?.id,
+        customerIdNo: _idNo.text.trim().isEmpty ? null : _idNo.text.trim(),
+      ),
+      message: '提交中…',
     );
     if (!mounted) return;
     if (err != null) {

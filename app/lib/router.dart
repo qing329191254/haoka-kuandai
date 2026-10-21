@@ -17,7 +17,6 @@ import 'package:haoka_app/pages/catalog_purchase_page.dart';
 import 'package:haoka_app/pages/stock_type_list_page.dart';
 import 'package:haoka_app/pages/home_page.dart';
 import 'package:haoka_app/pages/login_page.dart';
-import 'package:haoka_app/pages/my_messages_page.dart';
 import 'package:haoka_app/pages/my_orders_page.dart';
 import 'package:haoka_app/pages/order_detail_page.dart';
 import 'package:haoka_app/pages/personal_info_page.dart';
@@ -143,7 +142,7 @@ GoRouter createRouter(AuthStore auth) {
       ),
       GoRoute(
         path: '/service/messages',
-        builder: (context, state) => const MyMessagesPage(),
+        redirect: (context, state) => '/service',
       ),
       GoRoute(
         path: '/profile/info',

@@ -25,7 +25,7 @@ import { computed, ref } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import AppFeedback from '@/components/AppFeedback.vue'
 import { STATUS_LABEL, orderBizLabel, type MpOrder } from '@/types/order'
-import { showToast } from '@/store/feedback'
+import { showToast, withLoading } from '@/store/feedback'
 import { fetchOrder, markInstallDone, merchantBossPcOpen } from '@/store/orders'
 import { requireRole } from '@/store/session'
 
@@ -64,7 +64,7 @@ onShow(reload)
 
 async function confirmOpen() {
   if (!order.value) return
-  if (await merchantBossPcOpen(order.value.id)) {
+  if (await withLoading(() => merchantBossPcOpen(order.value!.id), '提交中…')) {
     showToast(isNaked.value ? '已开始办理' : '已开户', { type: 'success', duration: 800 })
     setTimeout(() => uni.navigateBack(), 800)
   } else {
@@ -74,7 +74,7 @@ async function confirmOpen() {
 
 async function finishInstall() {
   if (!order.value) return
-  if (await markInstallDone(order.value.id)) {
+  if (await withLoading(() => markInstallDone(order.value!.id), '提交中…')) {
     showToast('装机完成', { type: 'success', duration: 800 })
     setTimeout(() => uni.navigateBack(), 800)
   } else {

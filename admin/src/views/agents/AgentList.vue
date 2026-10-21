@@ -87,6 +87,7 @@ import { usePermission } from '@/composables/usePermission'
 import { includesKw, uniq, usePager } from '@/composables/usePager'
 import { agentRegionLabel, type Agent } from '@/types/stock'
 import type { EnableStatus } from '@/types/order'
+import { withLoading } from '@/utils/loading'
 
 const store = useAdminStore()
 const { can } = usePermission()
@@ -178,7 +179,7 @@ async function save() {
     return
   }
   try {
-    await store.upsertAgent({ ...form, id: form.id || `a${Date.now()}` })
+    await withLoading(() => store.upsertAgent({ ...form, id: form.id || `a${Date.now()}` }), '保存中…')
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '保存失败')
     return
@@ -197,7 +198,7 @@ async function onRemove(row: Agent) {
     return
   }
   try {
-    await store.removeAgent(row.id)
+    await withLoading(() => store.removeAgent(row.id), '删除中…')
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '删除失败')
     return

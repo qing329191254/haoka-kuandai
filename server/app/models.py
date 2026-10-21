@@ -207,7 +207,7 @@ class Feedback(Base):
     contact: Mapped[str] = mapped_column(String(80), default="")
     user_name: Mapped[str] = mapped_column(String(80), default="")
     user_id: Mapped[str] = mapped_column(String(32), default="", index=True)
-    # service_message=客服留言 | app_feedback=意见反馈
+    # service_message=客服留言(已弃用) | app_feedback=意见反馈
     channel: Mapped[str] = mapped_column(String(32), default="app_feedback", index=True)
     created_at: Mapped[str] = mapped_column(String(32))
     status: Mapped[str] = mapped_column(String(16), default="pending")
@@ -215,6 +215,37 @@ class Feedback(Base):
     admin_note: Mapped[str] = mapped_column(Text, default="")
     handled_at: Mapped[str] = mapped_column(String(32), default="")
     handled_by: Mapped[str] = mapped_column(String(80), default="")
+
+
+class CsConversation(Base):
+    """App 在线客服会话：每用户一条（可 reopen）。"""
+
+    __tablename__ = "cs_conversations"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(32), index=True)
+    user_name: Mapped[str] = mapped_column(String(80), default="")
+    user_phone: Mapped[str] = mapped_column(String(20), default="")
+    status: Mapped[str] = mapped_column(String(16), default="open", index=True)  # open | closed
+    last_message: Mapped[str] = mapped_column(String(200), default="")
+    last_message_at: Mapped[str] = mapped_column(String(32), default="", index=True)
+    user_unread: Mapped[int] = mapped_column(Integer, default=0)
+    agent_unread: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[str] = mapped_column(String(32))
+    updated_at: Mapped[str] = mapped_column(String(32), default="")
+
+
+class CsMessage(Base):
+    __tablename__ = "cs_messages"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(String(32), index=True)
+    # user | agent | system
+    sender_type: Mapped[str] = mapped_column(String(16), default="user", index=True)
+    agent_id: Mapped[str] = mapped_column(String(32), default="")
+    agent_name: Mapped[str] = mapped_column(String(80), default="")
+    # text | image
+    msg_type: Mapped[str] = mapped_column(String(16), default="text")
+    content: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[str] = mapped_column(String(32), index=True)
 
 
 class Faq(Base):

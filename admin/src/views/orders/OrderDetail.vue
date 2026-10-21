@@ -141,6 +141,7 @@ import {
   orderBizLabel,
   skipTechDispatch,
 } from '@/types/order'
+import { withLoading } from '@/utils/loading'
 
 const route = useRoute()
 const store = useAdminStore()
@@ -168,7 +169,7 @@ async function openRemark() {
   }).catch(() => ({ value: null as string | null }))
   if (value == null) return
   try {
-    await store.remarkOrder(order.value.id, value)
+    await withLoading(() => store.remarkOrder(order.value!.id, value), '保存中…')
     ElMessage.success('已保存备注')
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : '保存失败')
@@ -185,7 +186,7 @@ async function openCancel() {
   }).catch(() => ({ value: null as string | null }))
   if (value == null) return
   try {
-    await store.cancelOrder(order.value.id, value)
+    await withLoading(() => store.cancelOrder(order.value!.id, value), '提交中…')
     ElMessage.success('订单已取消')
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : '取消失败')

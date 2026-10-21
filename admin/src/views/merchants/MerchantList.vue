@@ -120,6 +120,7 @@ import {
   type EnableStatus,
   type Merchant,
 } from '@/types/order'
+import { withLoading } from '@/utils/loading'
 
 const store = useAdminStore()
 const { can } = usePermission()
@@ -224,12 +225,16 @@ async function save() {
     return
   }
   try {
-    await store.upsertMerchant({
-      ...form,
-      id: form.id || `m${Date.now()}`,
-      mpDisplayName: form.mpDisplayName || form.name,
-      bizTypes: [...form.bizTypes],
-    })
+    await withLoading(
+      () =>
+        store.upsertMerchant({
+          ...form,
+          id: form.id || `m${Date.now()}`,
+          mpDisplayName: form.mpDisplayName || form.name,
+          bizTypes: [...form.bizTypes],
+        }),
+      '保存中…',
+    )
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '保存失败')
     return
@@ -252,7 +257,7 @@ async function onRemove(row: Merchant) {
     return
   }
   try {
-    await store.removeMerchant(row.id)
+    await withLoading(() => store.removeMerchant(row.id), '删除中…')
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '删除失败')
     return

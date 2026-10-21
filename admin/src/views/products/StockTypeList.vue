@@ -61,6 +61,7 @@ import { useAdminStore } from '@/stores/admin'
 import { usePermission } from '@/composables/usePermission'
 import { usePager } from '@/composables/usePager'
 import type { StockBizType } from '@/types/order'
+import { withLoading } from '@/utils/loading'
 
 const store = useAdminStore()
 const { can } = usePermission()
@@ -101,7 +102,7 @@ async function save() {
     return
   }
   try {
-    await store.upsertStockBizType({ ...form, id: form.id || `st${Date.now()}` })
+    await withLoading(() => store.upsertStockBizType({ ...form, id: form.id || `st${Date.now()}` }), '保存中…')
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '保存失败')
     return
@@ -118,7 +119,7 @@ async function onRemove(row: StockBizType) {
   } catch {
     return
   }
-  const err = await store.removeStockBizType(row.id)
+  const err = await withLoading(() => store.removeStockBizType(row.id), '删除中…')
   if (err) ElMessage.warning(err)
   else ElMessage.success('已删除')
 }

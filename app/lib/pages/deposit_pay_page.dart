@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:tobias/tobias.dart';
 import 'package:haoka_app/store/auth_store.dart';
+import 'package:haoka_app/widgets/app_loading.dart';
 import 'package:haoka_app/widgets/app_surface.dart';
 import 'package:haoka_app/widgets/app_toast.dart';
 
@@ -17,7 +18,6 @@ class DepositPayPage extends StatefulWidget {
 }
 
 class _DepositPayPageState extends State<DepositPayPage> {
-  bool _loading = false;
   _PayMethod _method = _PayMethod.alipay;
 
   String get _methodLabel => switch (_method) {
@@ -31,19 +31,20 @@ class _DepositPayPageState extends State<DepositPayPage> {
   };
 
   Future<void> _pay() async {
-    setState(() => _loading = true);
     final store = context.read<AuthStore>();
-    final result = await store.payDeposit(channel: _channel);
+    final result = await AppLoading.run(
+      context,
+      () => store.payDeposit(channel: _channel),
+      message: '支付中…',
+    );
     if (!mounted) return;
 
     if (result.error != null) {
-      setState(() => _loading = false);
       AppToast.error(context, result.error!);
       return;
     }
 
     if (result.paid && !result.needClientPay) {
-      setState(() => _loading = false);
       AppToast.success(context, '$_methodLabel支付成功，已提交审核');
       await Future<void>.delayed(const Duration(milliseconds: 400));
       if (!mounted) return;
@@ -60,9 +61,13 @@ class _DepositPayPageState extends State<DepositPayPage> {
             result.env == 'sandbox' ? AliPayEvn.sandbox : AliPayEvn.online;
         final payResult = await tobias.pay(result.orderStr, evn: payEnv);
         final ok = _alipayResultOk(payResult);
-        await store.refreshMe();
         if (!mounted) return;
-        setState(() => _loading = false);
+        await AppLoading.run(
+          context,
+          () => store.refreshMe(),
+          message: '支付中…',
+        );
+        if (!mounted) return;
         if (ok || (store.user?.depositPaid ?? false)) {
           AppToast.success(context, '支付宝支付成功，已提交审核');
           await Future<void>.delayed(const Duration(milliseconds: 400));
@@ -76,13 +81,11 @@ class _DepositPayPageState extends State<DepositPayPage> {
         }
       } catch (e) {
         if (!mounted) return;
-        setState(() => _loading = false);
         AppToast.error(context, '调起支付宝失败：$e');
       }
       return;
     }
 
-    setState(() => _loading = false);
     AppToast.error(context, '支付参数异常，请重试或联系客服');
   }
 
@@ -214,17 +217,8 @@ class _DepositPayPageState extends State<DepositPayPage> {
           const SizedBox(height: 24),
           FilledButton(
             style: AppStyle.primaryPill,
-            onPressed: _loading ? null : _pay,
-            child: _loading
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.4,
-                      color: Colors.white,
-                    ),
-                  )
-                : Text('$_methodLabel 支付 ¥${amount.toStringAsFixed(0)}'),
+            onPressed: _pay,
+            child: Text('$_methodLabel 支付 ¥${amount.toStringAsFixed(0)}'),
           ),
         ],
       ),

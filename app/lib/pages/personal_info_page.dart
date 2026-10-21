@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:haoka_app/store/auth_store.dart';
+import 'package:haoka_app/widgets/app_loading.dart';
 import 'package:haoka_app/widgets/app_surface.dart';
 import 'package:haoka_app/widgets/app_toast.dart';
 import 'package:haoka_app/widgets/user_avatar.dart';
@@ -243,8 +244,12 @@ class _AvatarPreviewPageState extends State<AvatarPreviewPage> {
         imageQuality: 85,
       );
       if (file == null || !mounted) return;
-      final err = await context.read<AuthStore>().updateProfile(
-        avatarPath: file.path,
+      final err = await AppLoading.run(
+        context,
+        () => context.read<AuthStore>().updateProfile(
+          avatarPath: file.path,
+        ),
+        message: '上传中…',
       );
       if (!mounted) return;
       if (err != null) {
@@ -322,9 +327,13 @@ class _AvatarPreviewPageState extends State<AvatarPreviewPage> {
     );
 
     if (selected == null || !mounted) return;
-    final err = await context.read<AuthStore>().updateProfile(
-      avatarId: selected,
-      clearAvatarPath: true,
+    final err = await AppLoading.run(
+      context,
+      () => context.read<AuthStore>().updateProfile(
+        avatarId: selected,
+        clearAvatarPath: true,
+      ),
+      message: '上传中…',
     );
     if (!mounted) return;
     if (err != null) {
@@ -452,7 +461,11 @@ class _EditNicknamePageState extends State<EditNicknamePage> {
       AppToast.tip(context, '昵称最多 20 个字');
       return;
     }
-    final err = await context.read<AuthStore>().updateProfile(nickname: name);
+    final err = await AppLoading.run(
+      context,
+      () => context.read<AuthStore>().updateProfile(nickname: name),
+      message: '保存中…',
+    );
     if (!mounted) return;
     if (err != null) {
       AppToast.error(context, err);
@@ -529,7 +542,11 @@ class _EditEmailPageState extends State<EditEmailPage> {
       AppToast.tip(context, '请输入正确的邮箱');
       return;
     }
-    final err = await context.read<AuthStore>().updateProfile(email: email);
+    final err = await AppLoading.run(
+      context,
+      () => context.read<AuthStore>().updateProfile(email: email),
+      message: '保存中…',
+    );
     if (!mounted) return;
     if (err != null) {
       AppToast.error(context, err);
@@ -602,8 +619,12 @@ class EditGenderPage extends StatelessWidget {
                 InkWell(
                   onTap: () async {
                     final gender = UserGender.values[i];
-                    final err = await context.read<AuthStore>().updateProfile(
-                      gender: gender,
+                    final err = await AppLoading.run(
+                      context,
+                      () => context.read<AuthStore>().updateProfile(
+                        gender: gender,
+                      ),
+                      message: '保存中…',
                     );
                     if (!context.mounted) return;
                     if (err != null) {

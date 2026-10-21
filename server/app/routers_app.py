@@ -9,6 +9,14 @@ from app.db import get_db
 from app.deps import app_user_of, require_portal
 from app.integrations import SmsRateLimit, esign_provider, pay_provider, sms_provider
 from app.sms_aliyun import SmsSendError
+from app.cs_chat import (
+    add_message,
+    cs_conversation_out,
+    cs_message_out,
+    get_or_create_conversation,
+    list_messages,
+    mark_read_for_user,
+)
 from app.models import Agent, AgentApplication, AppUser, Feedback, Merchant, Order, Product
 from app.schemas import (
     AppLoginIn,
@@ -17,6 +25,7 @@ from app.schemas import (
     AppResetIn,
     AppSmsLoginIn,
     ContractSignIn,
+    CsMessageIn,
     DepositPayIn,
     FeedbackIn,
     OrderCreateIn,
@@ -376,3 +385,65 @@ def my_feedbacks(
         .all()
     )
     return {"items": [feedback_out(f) for f in rows], "total": len(rows)}
+
+
+@router.get("/cs/session")
+def cs_session(
+    payload: dict = Depends(require_portal("app")),
+    db: Session = Depends(get_db),
+):
+    """获取或创建当前用户的在线客服会话，并返回历史消息。"""
+    user = app_user_of(db, payload)
+    conv = get_or_create_conversation(db, user)
+    mark_read_for_user(db, conv)
+    msgs = list_messages(db, conv.id, limit=200)
+    db.commit()
+    return {
+        "conversation": cs_conversation_out(conv),
+        "messages": [cs_message_out(m, for_admin=False) for m in msgs],
+        "agentDisplayName": "派客邦客服",
+    }
+
+
+@router.get("/cs/messages")
+def cs_poll_messages(
+    after: str = "",
+    payload: dict = Depends(require_portal("app")),
+    db: Session = Depends(get_db),
+):
+    user = app_user_of(db, payload)
+    conv = get_or_create_conversation(db, user)
+    msgs = list_messages(db, conv.id, after_id=(after or "").strip(), limit=100)
+    if msgs:
+        mark_read_for_user(db, conv)
+        db.commit()
+    return {
+        "conversationId": conv.id,
+        "items": [cs_message_out(m, for_admin=False) for m in msgs],
+    }
+
+
+@router.post("/cs/messages")
+def cs_send_message(
+    body: CsMessageIn,
+    payload: dict = Depends(require_portal("app")),
+    db: Session = Depends(get_db),
+):
+    user = app_user_of(db, payload)
+    msg_type = (body.msg_type or "text").strip() or "text"
+    content = (body.content or "").strip()
+    if msg_type == "image":
+        if not content:
+            raise HTTPException(400, "图片地址不能为空")
+    else:
+        msg_type = "text"
+        if not content:
+            raise HTTPException(400, "请输入内容")
+        if len(content) > 2000:
+            raise HTTPException(400, "单条消息过长")
+    conv = get_or_create_conversation(db, user)
+    msg = add_message(db, conv, sender_type="user", content=content, msg_type=msg_type)
+    mark_read_for_user(db, conv)
+    db.commit()
+    db.refresh(msg)
+    return {"ok": True, "item": cs_message_out(msg, for_admin=False)}

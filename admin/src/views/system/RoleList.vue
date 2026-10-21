@@ -72,6 +72,7 @@ import ListPager from '@/components/ListPager.vue'
 import { ALL_PERMISSIONS, PERMISSION_TREE, type Permission, type Role } from '@/types/auth'
 import { usePermission } from '@/composables/usePermission'
 import { includesKw, usePager } from '@/composables/usePager'
+import { withLoading } from '@/utils/loading'
 
 const { auth, can } = usePermission()
 const kind = ref<'builtin' | 'custom'>()
@@ -126,14 +127,18 @@ async function save() {
   const isNew = !form.id
   const code = form.code || `role_${Date.now()}`
   try {
-    const err = await auth.upsertRole({
-      ...form,
-      id: form.id || `r${Date.now()}`,
-      // 标识仅系统内部使用：编辑时保留原值，新建时自动生成
-      code: isNew ? code : form.code,
-      name: form.name.trim(),
-      permissions,
-    })
+    const err = await withLoading(
+      () =>
+        auth.upsertRole({
+          ...form,
+          id: form.id || `r${Date.now()}`,
+          // 标识仅系统内部使用：编辑时保留原值，新建时自动生成
+          code: isNew ? code : form.code,
+          name: form.name.trim(),
+          permissions,
+        }),
+      '保存中…',
+    )
     if (err) {
       ElMessage.warning(err)
       return

@@ -15,7 +15,9 @@
         <text class="label">短信验证码</text>
         <view class="code-row">
           <input v-model="form.code" type="number" maxlength="6" class="input flex" placeholder="请输入验证码" />
-          <button class="code-btn" @click="onCode">获取验证码</button>
+          <button class="code-btn" :class="{ off: countdown > 0 }" :disabled="countdown > 0" @click="onCode">
+            {{ countdown > 0 ? `${countdown}s` : '获取验证码' }}
+          </button>
         </view>
       </view>
     </view>
@@ -30,10 +32,12 @@
         <text class="label">联系人</text>
         <input v-model="form.contact" class="input" placeholder="联系人姓名" />
       </view>
-      <view class="field" @click="pickRegion">
-        <text class="label">服务地区</text>
-        <text class="picker">{{ regionLabel || '请选择省 / 市 / 区' }}</text>
-      </view>
+      <RegionPicker :value="region" @confirm="onRegionConfirm">
+        <view class="field">
+          <text class="label">服务地区</text>
+          <text class="picker">{{ regionText || '请选择省 / 市 / 区' }}</text>
+        </view>
+      </RegionPicker>
       <view class="field">
         <text class="label">详细地址</text>
         <input v-model="form.address" class="input" placeholder="街道门牌" />
@@ -88,17 +92,26 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
+import { onUnload } from '@dcloudio/uni-app'
 import AppFeedback from '@/components/AppFeedback.vue'
+import RegionPicker from '@/components/RegionPicker.vue'
 import { request, uploadImage } from '@/api/http'
-import { REGION_OPTIONS, type BizTypeKey } from '@/data/merchants'
-import { showToast } from '@/store/feedback'
+import type { BizTypeKey } from '@/data/merchants'
+import { showToast, withLoading } from '@/store/feedback'
 import { loginByPhone, goRoleHome } from '@/store/session'
+import { regionLabel, type RegionSelection } from '@/utils/chinaRegions'
 
 const loading = ref(false)
 const licensePath = ref('')
 const licenseName = ref('')
 const bizTypes = ref<BizTypeKey[]>(['haoka', 'broadband_new_card'])
-const regionIdx = ref([0, 0])
+const region = ref<RegionSelection | null>(null)
+const countdown = ref(0)
+let codeTimer: ReturnType<typeof setInterval> | null = null
+
+onUnload(() => {
+  if (codeTimer) clearInterval(codeTimer)
+})
 
 const form = reactive({
   phone: '',
@@ -112,45 +125,41 @@ const form = reactive({
   remark: '',
 })
 
-const regionLabel = computed(() => {
-  const opt = REGION_OPTIONS[regionIdx.value[0]]
-  if (!opt) return ''
-  const d = opt.districts[regionIdx.value[1]] || opt.districts[0]
-  return `${opt.province} ${opt.city} ${d}`
-})
+const regionText = computed(() => regionLabel(region.value))
 
 function onBiz(e: { detail: { value: string[] } }) {
   bizTypes.value = e.detail.value as BizTypeKey[]
 }
 
-function pickRegion() {
-  uni.showActionSheet({
-    itemList: REGION_OPTIONS.map((o) => `${o.province}${o.city}`),
-    success(res) {
-      const pi = res.tapIndex
-      const districts = REGION_OPTIONS[pi].districts
-      uni.showActionSheet({
-        itemList: districts,
-        success(r2) {
-          regionIdx.value = [pi, r2.tapIndex]
-        },
-      })
-    },
-  })
+function onRegionConfirm(sel: RegionSelection) {
+  region.value = sel
 }
 
 async function onCode() {
+  if (countdown.value > 0) return
   if (!/^1\d{10}$/.test(form.phone.trim())) {
     showToast('请先填写手机号', { type: 'error' })
     return
   }
   try {
-    await request({ url: '/api/mp/auth/sms', method: 'POST', data: { phone: form.phone.trim() } })
+    await withLoading(
+      () => request({ url: '/api/mp/auth/sms', method: 'POST', data: { phone: form.phone.trim() } }),
+      '发送中…',
+    )
   } catch (err) {
     showToast(err instanceof Error ? err.message : '验证码发送失败', { type: 'error' })
     return
   }
   showToast('验证码已发送', { type: 'success', subtitle: '请查收短信' })
+  countdown.value = 60
+  if (codeTimer) clearInterval(codeTimer)
+  codeTimer = setInterval(() => {
+    countdown.value -= 1
+    if (countdown.value <= 0 && codeTimer) {
+      clearInterval(codeTimer)
+      codeTimer = null
+    }
+  }, 1000)
 }
 
 function pickLicense() {
@@ -176,6 +185,10 @@ async function submit() {
     showToast('请填写门店与联系人', { type: 'error' })
     return
   }
+  if (!region.value) {
+    showToast('请选择服务地区', { type: 'error' })
+    return
+  }
   if (!form.address.trim()) {
     showToast('请填写详细地址', { type: 'error' })
     return
@@ -192,53 +205,50 @@ async function submit() {
     showToast('请选择可接业务', { type: 'error' })
     return
   }
-  const opt = REGION_OPTIONS[regionIdx.value[0]]
-  const district = opt.districts[regionIdx.value[1]] || opt.districts[0]
 
   loading.value = true
   try {
-    let uploaded = licenseName.value
-    if (licensePath.value && !licensePath.value.startsWith('http')) {
-      uploaded = await uploadImage(licensePath.value, true)
-      licenseName.value = uploaded
-    }
-    await request({
-      url: '/api/mp/merchant/apply',
-      method: 'POST',
-      data: {
-        phone: form.phone.trim(),
-        code: form.code.trim(),
-        name: form.name.trim(),
-        contact: form.contact.trim(),
-        province: opt.province,
-        city: opt.city,
-        district,
-        address: form.address.trim(),
-        wechat: form.wechat.trim(),
-        backupPhone: form.backupPhone.trim(),
-        idNo: form.idNo.trim(),
-        licenseName: uploaded,
-        remark: form.remark.trim(),
-        bizTypes: [...bizTypes.value],
-      },
-    })
+    await withLoading(async () => {
+      let uploaded = licenseName.value
+      if (licensePath.value && !licensePath.value.startsWith('http')) {
+        uploaded = await uploadImage(licensePath.value, true)
+        licenseName.value = uploaded
+      }
+      await request({
+        url: '/api/mp/merchant/apply',
+        method: 'POST',
+        data: {
+          phone: form.phone.trim(),
+          code: form.code.trim(),
+          name: form.name.trim(),
+          contact: form.contact.trim(),
+          province: region.value!.province,
+          city: region.value!.city,
+          district: region.value!.district,
+          address: form.address.trim(),
+          wechat: form.wechat.trim(),
+          backupPhone: form.backupPhone.trim(),
+          idNo: form.idNo.trim(),
+          licenseName: uploaded,
+          remark: form.remark.trim(),
+          bizTypes: [...bizTypes.value],
+        },
+      })
+      const loginErr = await loginByPhone(form.phone.trim(), 'merchant', form.code.trim())
+      if (loginErr) throw new Error(loginErr)
+    }, '提交中…')
   } catch (e) {
     loading.value = false
     showToast(e instanceof Error ? e.message : '提交失败', { type: 'error' })
     return
   }
-  const loginErr = await loginByPhone(form.phone.trim(), 'merchant', form.code.trim())
   loading.value = false
-  if (loginErr) {
-    showToast(loginErr, { type: 'error' })
-    return
-  }
   showToast('申请已提交', { type: 'success', subtitle: '请等待运营审核', duration: 900 })
   setTimeout(() => goRoleHome('merchant'), 900)
 }
 
 function goLogin() {
-  uni.reLaunch({ url: '/pages/index/index?role=merchant' })
+  uni.reLaunch({ url: '/pages/login/login?role=merchant' })
 }
 </script>
 
@@ -307,6 +317,12 @@ function goLogin() {
   height: 64rpx;
   line-height: 64rpx;
   font-weight: 600;
+  white-space: nowrap;
+}
+.code-btn.off,
+.code-btn[disabled] {
+  color: #9aa3b2;
+  background: #e8eef5;
 }
 .chk {
   display: block;

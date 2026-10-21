@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { del, get, post, put } from '@/api/http'
+import { withLoading } from '@/utils/loading'
 import type { Agent, AgentApplication, DepositRule, StockRecord, StockType, WarehouseItem } from '@/types/stock'
 import type {
   AppUser,
@@ -207,16 +208,22 @@ export const useAdminStore = defineStore('admin', () => {
   async function toggleById<T extends { id: string; status: string }>(list: T[], id: string) {
     const item = list.find((x) => x.id === id)
     if (!item) return
-    const prev = item.status
-    item.status = item.status === 'active' ? 'disabled' : 'active'
     try {
-      if (list === merchants.value) await upsertMerchant(item as unknown as Merchant)
-      else if (list === products.value) await upsertProduct(item as unknown as Product)
-      else if (list === agents.value) await upsertAgent(item as unknown as Agent)
-      else if (list === stockBizTypes.value) await upsertStockBizType(item as unknown as StockBizType)
-      else if (list === technicians.value) await upsertTechnician(item as unknown as Technician)
+      await withLoading(async () => {
+        const prev = item.status
+        item.status = item.status === 'active' ? 'disabled' : 'active'
+        try {
+          if (list === merchants.value) await upsertMerchant(item as unknown as Merchant)
+          else if (list === products.value) await upsertProduct(item as unknown as Product)
+          else if (list === agents.value) await upsertAgent(item as unknown as Agent)
+          else if (list === stockBizTypes.value) await upsertStockBizType(item as unknown as StockBizType)
+          else if (list === technicians.value) await upsertTechnician(item as unknown as Technician)
+        } catch (e) {
+          item.status = prev
+          throw e
+        }
+      }, '提交中…')
     } catch (e) {
-      item.status = prev
       ElMessage.error(e instanceof Error ? e.message : '状态更新失败')
     }
   }
@@ -276,8 +283,10 @@ export const useAdminStore = defineStore('admin', () => {
 
   async function toggleUser(id: string) {
     try {
-      await post(`/api/admin/users/${id}/toggle`)
-      await hydrate()
+      await withLoading(async () => {
+        await post(`/api/admin/users/${id}/toggle`)
+        await hydrate()
+      }, '提交中…')
     } catch (e) {
       ElMessage.error(e instanceof Error ? e.message : '操作失败')
     }

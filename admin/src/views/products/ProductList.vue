@@ -134,6 +134,7 @@ import {
   type Product,
   type ProductBizType,
 } from '@/types/order'
+import { withLoading } from '@/utils/loading'
 
 const PRODUCT_TYPE_LABEL: Record<ProductBizType, string> = {
   haoka: '号卡',
@@ -260,13 +261,17 @@ async function save() {
     return
   }
   try {
-    await store.upsertProduct({
-      ...form,
-      id: form.id || `p${Date.now()}`,
-      stockTypeId: form.bizType === 'stock' ? form.stockTypeId : undefined,
-      wifiDeviceType: form.bizType === 'wifi' ? form.wifiDeviceType : undefined,
-      wifiBizMode: form.bizType === 'wifi' ? form.wifiBizMode : undefined,
-    })
+    await withLoading(
+      () =>
+        store.upsertProduct({
+          ...form,
+          id: form.id || `p${Date.now()}`,
+          stockTypeId: form.bizType === 'stock' ? form.stockTypeId : undefined,
+          wifiDeviceType: form.bizType === 'wifi' ? form.wifiDeviceType : undefined,
+          wifiBizMode: form.bizType === 'wifi' ? form.wifiBizMode : undefined,
+        }),
+      '保存中…',
+    )
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '保存失败')
     return

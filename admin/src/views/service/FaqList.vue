@@ -71,7 +71,7 @@
                   type="textarea"
                   resize="none"
                   :rows="3"
-                  placeholder="用户点选后填入留言的标签文案；下方可写补充说明"
+                  placeholder="用户点选后作为聊天消息发送的标签文案；下方可写补充说明"
                   style="margin-top: 8px"
                 />
               </div>
@@ -176,6 +176,7 @@ import { useAdminStore } from '@/stores/admin'
 import { usePermission } from '@/composables/usePermission'
 import { includesKw, usePager } from '@/composables/usePager'
 import type { AppVersionConfig, FaqItem } from '@/types/order'
+import { withLoading } from '@/utils/loading'
 
 const store = useAdminStore()
 const { can } = usePermission()
@@ -252,7 +253,7 @@ async function saveFaq() {
     return
   }
   try {
-    await store.upsertFaq({ ...form, id: form.id || `f${Date.now()}` })
+    await withLoading(() => store.upsertFaq({ ...form, id: form.id || `f${Date.now()}` }), '保存中…')
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '保存失败')
     return
@@ -264,10 +265,13 @@ async function saveFaq() {
 async function onDelete(row: FaqItem) {
   try {
     await ElMessageBox.confirm(`确定删除「${row.question}」？`, '删除 FAQ', { type: 'warning' })
-    await store.removeFaq(row.id)
+  } catch {
+    return
+  }
+  try {
+    await withLoading(() => store.removeFaq(row.id), '删除中…')
     ElMessage.success('已删除')
   } catch (e) {
-    if (e === 'cancel' || e === 'close') return
     ElMessage.warning(e instanceof Error ? e.message : '删除失败')
   }
 }
@@ -287,11 +291,15 @@ async function saveCfg() {
     return
   }
   try {
-    await store.saveServiceConfig({
-      hotline: cfg.hotline,
-      workTime: cfg.workTime,
-      quickReplies,
-    })
+    await withLoading(
+      () =>
+        store.saveServiceConfig({
+          hotline: cfg.hotline,
+          workTime: cfg.workTime,
+          quickReplies,
+        }),
+      '保存中…',
+    )
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '保存失败')
     return
@@ -305,7 +313,7 @@ async function saveVer() {
     return
   }
   try {
-    await store.saveAppVersion({ ...ver })
+    await withLoading(() => store.saveAppVersion({ ...ver }), '保存中…')
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '保存失败')
     return

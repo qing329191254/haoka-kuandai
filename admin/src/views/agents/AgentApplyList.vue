@@ -110,6 +110,7 @@ import { useAdminStore } from '@/stores/admin'
 import { usePermission } from '@/composables/usePermission'
 import { includesKw, usePager } from '@/composables/usePager'
 import { agentRegionLabel, type AgentApplication, type AgentApplyStatus } from '@/types/stock'
+import { withLoading } from '@/utils/loading'
 
 const store = useAdminStore()
 const { can } = usePermission()
@@ -160,7 +161,7 @@ async function onApprove(row: AgentApplication) {
   } catch {
     return
   }
-  const err = await store.approveApplication(row.id)
+  const err = await withLoading(() => store.approveApplication(row.id), '提交中…')
   if (err) {
     ElMessage.warning(err)
     return
@@ -177,7 +178,7 @@ async function onReject(row: AgentApplication) {
       type: 'warning',
       inputValidator: (v) => (!!v?.trim() ? true : '请填写原因'),
     })
-    const err = await store.rejectApplication(row.id, value)
+    const err = await withLoading(() => store.rejectApplication(row.id, value), '提交中…')
     if (err) {
       ElMessage.warning(err)
       return

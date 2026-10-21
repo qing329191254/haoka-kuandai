@@ -235,9 +235,9 @@ export interface ContentDoc {
 }
 
 export interface QuickReply {
-  /** App 点选后填入留言草稿的标签文案 */
+  /** App 快捷入口文案，点选后作为用户消息发送 */
   prompt: string
-  /** 后台配置的补充说明（可选，App 当前主要用 prompt） */
+  /** 后台配置的补充说明（可选） */
   reply: string
 }
 

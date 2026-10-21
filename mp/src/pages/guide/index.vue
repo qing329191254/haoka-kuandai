@@ -54,6 +54,12 @@
 </template>
 
 <script setup lang="ts">
+import { onShareAppMessage, onShareTimeline } from '@dcloudio/uni-app'
+import { getMpShareAppMessage, getMpShareTimeline } from '@/utils/mpShare'
+
+onShareAppMessage(() => getMpShareAppMessage())
+onShareTimeline(() => getMpShareTimeline())
+
 const steps = [
   { title: '商家提交入驻', desc: '填写门店、服务地区和可接业务，等待运营审核。' },
   { title: '审核通过后登录', desc: '使用申请手机号登录，处理新录入的订单。' },
@@ -66,7 +72,7 @@ function goApply() {
 }
 
 function goLogin(role: 'merchant' | 'technician') {
-  uni.reLaunch({ url: `/pages/index/index?role=${role}` })
+  uni.navigateTo({ url: `/pages/login/login?role=${role}` })
 }
 </script>
 

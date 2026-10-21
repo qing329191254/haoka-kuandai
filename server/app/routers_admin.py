@@ -5,6 +5,13 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.cs_chat import (
+    add_message,
+    cs_conversation_out,
+    cs_message_out,
+    list_messages,
+    mark_read_for_agent,
+)
 from app.db import get_db
 from app.deps import require_perm, require_portal
 from app.models import (
@@ -13,6 +20,7 @@ from app.models import (
     AppUser,
     AppVersionConfig,
     ContentDoc,
+    CsConversation,
     Faq,
     Feedback,
     Merchant,
@@ -31,6 +39,7 @@ from app.models import (
 from app.schemas import (
     AdminLoginIn,
     AgentIn,
+    CsMessageIn,
     FeedbackHandleIn,
     MerchantIn,
     ProductIn,
@@ -495,6 +504,107 @@ def reopen_fb(fid: str, _: dict = Depends(require_perm("feedback:edit")), db: Se
     f.handled_by = ""
     db.commit()
     return feedback_out(f)
+
+
+@router.get("/cs/conversations")
+def cs_conversations(_: dict = Depends(require_perm("feedback:view")), db: Session = Depends(get_db)):
+    rows = (
+        db.query(CsConversation)
+        .order_by(CsConversation.last_message_at.desc(), CsConversation.updated_at.desc())
+        .limit(200)
+        .all()
+    )
+    return {"items": [cs_conversation_out(c) for c in rows], "total": len(rows)}
+
+
+@router.get("/cs/conversations/{cid}")
+def cs_conversation_detail(
+    cid: str,
+    after: str = "",
+    _: dict = Depends(require_perm("feedback:view")),
+    db: Session = Depends(get_db),
+):
+    conv = db.get(CsConversation, cid)
+    if not conv:
+        raise HTTPException(404, "会话不存在")
+    mark_read_for_agent(db, conv)
+    msgs = list_messages(db, conv.id, after_id=(after or "").strip(), limit=200)
+    db.commit()
+    return {
+        "conversation": cs_conversation_out(conv),
+        "messages": [cs_message_out(m, for_admin=True) for m in msgs],
+    }
+
+
+@router.get("/cs/conversations/{cid}/messages")
+def cs_conversation_poll(
+    cid: str,
+    after: str = "",
+    _: dict = Depends(require_perm("feedback:view")),
+    db: Session = Depends(get_db),
+):
+    conv = db.get(CsConversation, cid)
+    if not conv:
+        raise HTTPException(404, "会话不存在")
+    msgs = list_messages(db, conv.id, after_id=(after or "").strip(), limit=100)
+    if msgs:
+        mark_read_for_agent(db, conv)
+        db.commit()
+    return {"items": [cs_message_out(m, for_admin=True) for m in msgs]}
+
+
+@router.post("/cs/conversations/{cid}/messages")
+def cs_conversation_reply(
+    cid: str,
+    body: CsMessageIn,
+    payload: dict = Depends(require_perm("feedback:edit")),
+    db: Session = Depends(get_db),
+):
+    conv = db.get(CsConversation, cid)
+    if not conv:
+        raise HTTPException(404, "会话不存在")
+    msg_type = (body.msg_type or "text").strip() or "text"
+    content = (body.content or "").strip()
+    if msg_type == "image":
+        if not content:
+            raise HTTPException(400, "图片地址不能为空")
+    else:
+        msg_type = "text"
+        if not content:
+            raise HTTPException(400, "请输入回复内容")
+        if len(content) > 2000:
+            raise HTTPException(400, "单条消息过长")
+    staff = payload.get("staff")
+    agent_id = getattr(staff, "id", "") or ""
+    agent_name = (getattr(staff, "name", None) or getattr(staff, "username", None) or "客服") if staff else "客服"
+    msg = add_message(
+        db,
+        conv,
+        sender_type="agent",
+        content=content,
+        msg_type=msg_type,
+        agent_id=agent_id,
+        agent_name=agent_name,
+    )
+    mark_read_for_agent(db, conv)
+    db.commit()
+    db.refresh(msg)
+    return {"ok": True, "item": cs_message_out(msg, for_admin=True)}
+
+
+@router.post("/cs/conversations/{cid}/close")
+def cs_conversation_close(
+    cid: str,
+    _: dict = Depends(require_perm("feedback:edit")),
+    db: Session = Depends(get_db),
+):
+    conv = db.get(CsConversation, cid)
+    if not conv:
+        raise HTTPException(404, "会话不存在")
+    conv.status = "closed"
+    conv.updated_at = now_str()
+    db.commit()
+    return cs_conversation_out(conv)
 
 
 @router.get("/faqs")

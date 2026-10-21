@@ -23,7 +23,9 @@
       @update:active-chip="onFilterChange"
     />
 
-    <view v-for="o in visible" :key="o.id" class="card surface" @click="go(o.id)">
+    <ListRefreshBar :refreshing="refreshing" :boot-loading="bootLoading" />
+
+    <view v-for="o in visible" v-show="!bootLoading" :key="o.id" class="card surface" @click="go(o.id)">
       <view class="row">
         <text class="biz">{{ orderBizLabel(o) }}</text>
         <text class="status">{{ STATUS_LABEL[o.status] }}</text>
@@ -34,8 +36,9 @@
       <text class="no">{{ o.orderNo }}</text>
     </view>
 
-    <view v-if="!filtered.length" class="empty">{{ emptyText }}</view>
+    <view v-if="!bootLoading && !filtered.length" class="empty">{{ emptyText }}</view>
     <ListLoadMore
+      v-if="!bootLoading"
       :total="total"
       :shown="visible.length"
       :has-more="hasMore"
@@ -50,7 +53,9 @@ import { computed, ref, watch } from 'vue'
 import { onLoad, onPageScroll, onReachBottom, onShow } from '@dcloudio/uni-app'
 import BackToTop from '@/components/BackToTop.vue'
 import ListLoadMore from '@/components/ListLoadMore.vue'
+import ListRefreshBar from '@/components/ListRefreshBar.vue'
 import OrderListToolbar, { type FilterChip } from '@/components/OrderListToolbar.vue'
+import { useListRefresh } from '@/composables/useListRefresh'
 import { usePagedList } from '@/composables/usePagedList'
 import { STATUS_LABEL, orderBizLabel, type MpOrder, type OrderStatus } from '@/types/order'
 import { listOrders, refreshOrders } from '@/store/orders'
@@ -88,18 +93,21 @@ const TAB_STATUS: Record<TabKey, OrderStatus[]> = {
 const tab = ref<TabKey>('todo')
 const keyword = ref('')
 const bizChip = ref('all')
-const orders = ref<MpOrder[]>([])
+const orders = ref<MpOrder[]>(sortOrdersByTime(listOrders()))
 const showTop = ref(false)
+const { refreshing, bootLoading, runRefresh } = useListRefresh()
 
 async function refresh() {
   if (!requireRole('technician')) return
-  await refreshOrders()
-  orders.value = sortOrdersByTime(listOrders())
-  const prefer = uni.getStorageSync('tech_tasks_prefer_tab') as TabKey | 'failed' | ''
-  if (prefer === 'todo' || prefer === 'serving' || prefer === 'done' || prefer === 'returned' || prefer === 'failed') {
-    tab.value = prefer === 'failed' ? 'returned' : prefer
-    uni.removeStorageSync('tech_tasks_prefer_tab')
-  }
+  await runRefresh(orders.value.length > 0 || listOrders().length > 0, async () => {
+    await refreshOrders()
+    orders.value = sortOrdersByTime(listOrders())
+    const prefer = uni.getStorageSync('tech_tasks_prefer_tab') as TabKey | 'failed' | ''
+    if (prefer === 'todo' || prefer === 'serving' || prefer === 'done' || prefer === 'returned' || prefer === 'failed') {
+      tab.value = prefer === 'failed' ? 'returned' : prefer
+      uni.removeStorageSync('tech_tasks_prefer_tab')
+    }
+  })
 }
 
 onLoad((q) => {

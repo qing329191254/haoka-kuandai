@@ -78,6 +78,7 @@ import ListPager from '@/components/ListPager.vue'
 import { usePermission } from '@/composables/usePermission'
 import { includesKw, usePager } from '@/composables/usePager'
 import type { Staff } from '@/types/auth'
+import { withLoading } from '@/utils/loading'
 
 const { auth, can } = usePermission()
 const roleId = ref<string>()
@@ -130,12 +131,16 @@ async function save() {
     ElMessage.warning('请填写账号和姓名')
     return
   }
-  const err = await auth.upsertStaff({
-    ...form,
-    id: form.id || `s${Date.now()}`,
-    password: form.password || (form.id ? '' : '123456'),
-    status: form.username === 'admin' ? 'active' : form.status || 'active',
-  })
+  const err = await withLoading(
+    () =>
+      auth.upsertStaff({
+        ...form,
+        id: form.id || `s${Date.now()}`,
+        password: form.password || (form.id ? '' : '123456'),
+        status: form.username === 'admin' ? 'active' : form.status || 'active',
+      }),
+    '保存中…',
+  )
   if (err) {
     ElMessage.warning(err)
     return
@@ -154,7 +159,7 @@ async function onRemove(row: Staff) {
   } catch {
     return
   }
-  const err = await auth.removeStaff(row.id)
+  const err = await withLoading(() => auth.removeStaff(row.id), '删除中…')
   if (err) {
     ElMessage.warning(err)
     return

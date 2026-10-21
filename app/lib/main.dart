@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:haoka_app/api/api_client.dart';
@@ -60,10 +61,25 @@ class _HaokaAppState extends State<HaokaApp> {
       child: MaterialApp.router(
         title: '派客邦',
         debugShowCheckedModeBanner: false,
+        locale: const Locale('zh', 'CN'),
+        supportedLocales: const [
+          Locale('zh', 'CN'),
+          Locale('en', 'US'),
+        ],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1E88E5)),
           useMaterial3: true,
           scaffoldBackgroundColor: Colors.white,
+          textSelectionTheme: const TextSelectionThemeData(
+            cursorColor: Color(0xFF1E88E5),
+            selectionColor: Color(0x331E88E5),
+            selectionHandleColor: Color(0xFF1E88E5),
+          ),
           appBarTheme: const AppBarTheme(
             centerTitle: true,
             systemOverlayStyle: SystemUiOverlayStyle(

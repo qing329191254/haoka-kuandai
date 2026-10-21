@@ -20,6 +20,7 @@ import { ElMessage } from 'element-plus'
 import { useAdminStore } from '@/stores/admin'
 import { usePermission } from '@/composables/usePermission'
 import type { ContentDoc } from '@/types/order'
+import { withLoading } from '@/utils/loading'
 
 const store = useAdminStore()
 const { can } = usePermission()
@@ -41,7 +42,10 @@ async function save(id: ContentDoc['id']) {
   const origin = store.docs.find((d) => d.id === id)
   if (!origin) return
   try {
-    await store.saveDoc({ ...origin, sections: (editing[id] || []).map((s) => ({ ...s })) })
+    await withLoading(
+      () => store.saveDoc({ ...origin, sections: (editing[id] || []).map((s) => ({ ...s })) }),
+      '保存中…',
+    )
     ElMessage.success(`${origin.title}已保存`)
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '保存失败')

@@ -8,6 +8,7 @@ import 'package:haoka_app/models/order.dart';
 import 'package:haoka_app/models/product.dart';
 import 'package:haoka_app/store/auth_store.dart';
 import 'package:haoka_app/store/order_store.dart';
+import 'package:haoka_app/widgets/app_loading.dart';
 import 'package:haoka_app/widgets/app_surface.dart';
 import 'package:haoka_app/widgets/app_toast.dart';
 import 'package:haoka_app/widgets/carrier_picker.dart';
@@ -130,30 +131,34 @@ class _CatalogPurchasePageState extends State<CatalogPurchasePage> {
     final detail = _address.text.trim();
     final user = context.read<AuthStore>().user;
     final idNo = _idNo.text.trim();
-    final err = await context.read<OrderStore>().addOrder(
-      bizType: widget.product.bizType,
-      productId: widget.product.id,
-      customerName: _name.text.trim().isEmpty
-          ? '用户${_phone.text.trim().substring(_phone.text.trim().length - 4)}'
-          : _name.text.trim(),
-      customerPhone: _phone.text.trim(),
-      address: '${region.province}${region.city}${region.district}$detail',
-      productName: widget.product.name,
-      carrier: _wifiFamily ? _company.text.trim() : widget.product.carrier,
-      province: region.province,
-      city: region.city,
-      district: region.district,
-      assignedMerchantId: merchant?.id,
-      assignedMerchantName: merchant?.name,
-      createdByUserId: user?.id,
-      stockTypeId: widget.product.stockTypeId,
-      stockTypeName: widget.product.stockTypeName,
-      commission: widget.product.commission,
-      wifiDeviceType: widget.product.wifiDeviceType,
-      wifiBizMode: widget.product.wifiBizMode,
-      customerIdNo: widget.product.bizType == BizType.haoka && idNo.isNotEmpty
-          ? idNo
-          : null,
+    final err = await AppLoading.run(
+      context,
+      () => context.read<OrderStore>().addOrder(
+        bizType: widget.product.bizType,
+        productId: widget.product.id,
+        customerName: _name.text.trim().isEmpty
+            ? '用户${_phone.text.trim().substring(_phone.text.trim().length - 4)}'
+            : _name.text.trim(),
+        customerPhone: _phone.text.trim(),
+        address: '${region.province}${region.city}${region.district}$detail',
+        productName: widget.product.name,
+        carrier: _wifiFamily ? _company.text.trim() : widget.product.carrier,
+        province: region.province,
+        city: region.city,
+        district: region.district,
+        assignedMerchantId: merchant?.id,
+        assignedMerchantName: merchant?.name,
+        createdByUserId: user?.id,
+        stockTypeId: widget.product.stockTypeId,
+        stockTypeName: widget.product.stockTypeName,
+        commission: widget.product.commission,
+        wifiDeviceType: widget.product.wifiDeviceType,
+        wifiBizMode: widget.product.wifiBizMode,
+        customerIdNo: widget.product.bizType == BizType.haoka && idNo.isNotEmpty
+            ? idNo
+            : null,
+      ),
+      message: '提交中…',
     );
     if (!mounted) return;
     if (err != null) {

@@ -85,6 +85,7 @@ import { useAdminStore } from '@/stores/admin'
 import { usePermission } from '@/composables/usePermission'
 import { usePager } from '@/composables/usePager'
 import { SCALE_OPTIONS, type DepositRule } from '@/types/stock'
+import { withLoading } from '@/utils/loading'
 
 const store = useAdminStore()
 const { can } = usePermission()
@@ -172,7 +173,7 @@ async function save() {
     return
   }
   try {
-    await store.upsertDepositRule({ ...form, id: form.id || `dr${Date.now()}` })
+    await withLoading(() => store.upsertDepositRule({ ...form, id: form.id || `dr${Date.now()}` }), '保存中…')
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '保存失败')
     return
@@ -183,10 +184,14 @@ async function save() {
 
 async function toggle(row: DepositRule) {
   try {
-    await store.upsertDepositRule({
-      ...row,
-      status: row.status === 'active' ? 'disabled' : 'active',
-    })
+    await withLoading(
+      () =>
+        store.upsertDepositRule({
+          ...row,
+          status: row.status === 'active' ? 'disabled' : 'active',
+        }),
+      '保存中…',
+    )
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '操作失败')
   }
@@ -200,7 +205,7 @@ async function onRemove(row: DepositRule) {
   } catch {
     return
   }
-  const err = await store.removeDepositRule(row.id)
+  const err = await withLoading(() => store.removeDepositRule(row.id), '删除中…')
   if (err) ElMessage.warning(err)
   else ElMessage.success('已删除')
 }

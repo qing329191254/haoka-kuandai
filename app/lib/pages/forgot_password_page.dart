@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:haoka_app/store/auth_store.dart';
+import 'package:haoka_app/widgets/app_loading.dart';
 import 'package:haoka_app/widgets/app_surface.dart';
 import 'package:haoka_app/widgets/app_toast.dart';
 
@@ -22,7 +23,6 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   final _password = TextEditingController();
   final _confirm = TextEditingController();
   bool _obscure = true;
-  bool _loading = false;
   int _countdown = 0;
   Timer? _timer;
 
@@ -42,7 +42,11 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       AppToast.tip(context, '请先输入正确的 11 位手机号');
       return;
     }
-    final err = await context.read<AuthStore>().sendSmsCode(_phone.text);
+    final err = await AppLoading.run(
+      context,
+      () => context.read<AuthStore>().sendSmsCode(_phone.text),
+      message: '发送中…',
+    );
     if (!mounted) return;
     if (err != null) {
       AppToast.error(context, err);
@@ -67,14 +71,16 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _loading = true);
-    final err = await context.read<AuthStore>().resetPassword(
-      phone: _phone.text,
-      code: _code.text,
-      newPassword: _password.text,
+    final err = await AppLoading.run(
+      context,
+      () => context.read<AuthStore>().resetPassword(
+        phone: _phone.text,
+        code: _code.text,
+        newPassword: _password.text,
+      ),
+      message: '提交中…',
     );
     if (!mounted) return;
-    setState(() => _loading = false);
     if (err != null) {
       AppToast.error(context, err);
       return;
@@ -187,24 +193,15 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                       ),
                       const SizedBox(height: 20),
                       FilledButton(
-                        onPressed: _loading ? null : _submit,
+                        onPressed: _submit,
                         style: AppStyle.primaryPill,
-                        child: _loading
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text(
-                                '确认重置',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                        child: const Text(
+                          '确认重置',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ],
                   ),

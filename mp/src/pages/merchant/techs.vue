@@ -4,8 +4,9 @@
       <text class="tip">本门店上门师傅，派单时从此列表选择</text>
       <button class="add btn-primary" size="mini" @click="goEdit()">新增师傅</button>
     </view>
-    <view v-if="!allList.length" class="empty surface">暂无师傅，请先新增</view>
-    <view v-for="t in visible" :key="t.id" class="card surface">
+    <ListRefreshBar :refreshing="refreshing" :boot-loading="bootLoading" />
+    <view v-if="!bootLoading && !allList.length" class="empty surface">暂无师傅，请先新增</view>
+    <view v-for="t in visible" v-show="!bootLoading" :key="t.id" class="card surface">
       <view class="row">
         <text class="name">{{ t.name }}</text>
         <text class="tag" :class="t.status">{{ t.status === 'active' ? '在岗' : '停用' }}</text>
@@ -18,6 +19,7 @@
       </view>
     </view>
     <ListLoadMore
+      v-if="!bootLoading"
       :total="total"
       :shown="visible.length"
       :has-more="hasMore"
@@ -32,23 +34,28 @@ import { ref } from 'vue'
 import { onReachBottom, onShow } from '@dcloudio/uni-app'
 import AppFeedback from '@/components/AppFeedback.vue'
 import ListLoadMore from '@/components/ListLoadMore.vue'
+import ListRefreshBar from '@/components/ListRefreshBar.vue'
+import { useListRefresh } from '@/composables/useListRefresh'
 import { usePagedList } from '@/composables/usePagedList'
 import { fetchTechnicians, removeTechnician } from '@/store/technicians'
 import { TECH_SKILL_LABEL, type MpTechnician, type TechSkill } from '@/data/technicians'
-import { showConfirm, showToast } from '@/store/feedback'
+import { showConfirm, showToast, withLoading } from '@/store/feedback'
 import { requireRole, type MpSession } from '@/store/session'
 
 const session = ref<MpSession | null>(null)
 const allList = ref<MpTechnician[]>([])
+const { refreshing, bootLoading, runRefresh } = useListRefresh()
 
 async function reload() {
   session.value = requireRole('merchant')
   if (!session.value?.merchantId) return
-  try {
-    allList.value = await fetchTechnicians()
-  } catch {
-    allList.value = []
-  }
+  await runRefresh(allList.value.length > 0, async () => {
+    try {
+      allList.value = await fetchTechnicians()
+    } catch {
+      if (!allList.value.length) allList.value = []
+    }
+  })
 }
 
 onShow(reload)
@@ -78,8 +85,10 @@ async function onRemove(id: string, name: string) {
     icon: '×',
   })
   if (!ok) return
-  await removeTechnician(id)
-  await reload()
+  await withLoading(async () => {
+    await removeTechnician(id)
+    await reload()
+  }, '提交中…')
   showToast('已删除', { type: 'success' })
 }
 </script>

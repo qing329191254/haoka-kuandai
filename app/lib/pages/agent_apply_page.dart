@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:haoka_app/data/china_regions.dart';
 import 'package:haoka_app/store/auth_store.dart';
+import 'package:haoka_app/widgets/app_loading.dart';
 import 'package:haoka_app/widgets/app_surface.dart';
 import 'package:haoka_app/widgets/app_toast.dart';
 import 'package:haoka_app/widgets/region_picker.dart';
@@ -38,7 +39,6 @@ class _AgentApplyPageState extends State<AgentApplyPage> {
   DepositQuote? _quote;
   String? _licensePath;
   bool _obscure = true;
-  bool _loading = false;
   int _countdown = 0;
   Timer? _timer;
 
@@ -65,7 +65,11 @@ class _AgentApplyPageState extends State<AgentApplyPage> {
       AppToast.tip(context, '请先输入正确的 11 位手机号');
       return;
     }
-    final err = await context.read<AuthStore>().sendSmsCode(_phone.text);
+    final err = await AppLoading.run(
+      context,
+      () => context.read<AuthStore>().sendSmsCode(_phone.text),
+      message: '发送中…',
+    );
     if (!mounted) return;
     if (err != null) {
       AppToast.error(context, err);
@@ -166,26 +170,28 @@ class _AgentApplyPageState extends State<AgentApplyPage> {
       AppToast.tip(context, '请上传证件照片');
       return;
     }
-    setState(() => _loading = true);
-    final err = await context.read<AuthStore>().submitApplication(
-      phone: _phone.text,
-      password: _password.text,
-      code: _code.text,
-      contact: _contact.text,
-      companyName: _company.text,
-      province: _region!.province,
-      city: _region!.city,
-      district: _region!.district,
-      address: _address.text,
-      wechat: _wechat.text,
-      backupPhone: _backup.text,
-      idNo: _idNo.text,
-      licensePath: _licensePath!,
-      remark: _remark.text,
-      scale: _scale,
+    final err = await AppLoading.run(
+      context,
+      () => context.read<AuthStore>().submitApplication(
+        phone: _phone.text,
+        password: _password.text,
+        code: _code.text,
+        contact: _contact.text,
+        companyName: _company.text,
+        province: _region!.province,
+        city: _region!.city,
+        district: _region!.district,
+        address: _address.text,
+        wechat: _wechat.text,
+        backupPhone: _backup.text,
+        idNo: _idNo.text,
+        licensePath: _licensePath!,
+        remark: _remark.text,
+        scale: _scale,
+      ),
+      message: '提交中…',
     );
     if (!mounted) return;
-    setState(() => _loading = false);
     if (err != null) {
       AppToast.error(context, err);
       return;
@@ -483,24 +489,15 @@ class _AgentApplyPageState extends State<AgentApplyPage> {
               ),
               const SizedBox(height: 20),
               FilledButton(
-                onPressed: _loading ? null : _submit,
+                onPressed: _submit,
                 style: AppStyle.primaryPill,
-                child: _loading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text(
-                        '提交申请',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                child: const Text(
+                  '提交申请',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
               TextButton(
                 onPressed: () => context.pop(),

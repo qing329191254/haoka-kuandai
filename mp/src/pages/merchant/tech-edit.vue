@@ -9,10 +9,15 @@
         <text class="label">手机号</text>
         <input v-model="form.phone" type="number" maxlength="11" class="input" placeholder="用于师傅端登录" />
       </view>
-      <view class="field" @click="pickDistrict">
-        <text class="label">服务区域</text>
-        <text class="picker">{{ form.district || '选择区县' }}</text>
-      </view>
+      <RegionPicker
+        :value="{ province: form.province, city: form.city, district: form.district }"
+        @confirm="onRegionConfirm"
+      >
+        <view class="field">
+          <text class="label">服务区域</text>
+          <text class="picker">{{ regionText || '请选择省 / 市 / 区' }}</text>
+        </view>
+      </RegionPicker>
       <view class="field">
         <text class="label">可接技能</text>
         <checkbox-group @change="onSkills">
@@ -46,26 +51,32 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import AppFeedback from '@/components/AppFeedback.vue'
+import RegionPicker from '@/components/RegionPicker.vue'
 import { fetchTechnicians, saveTechnician } from '@/store/technicians'
 import type { TechSkill } from '@/data/technicians'
-import { showToast } from '@/store/feedback'
+import { showToast, withLoading } from '@/store/feedback'
 import { request } from '@/api/http'
 import { requireRole, type MpSession } from '@/store/session'
+import { regionLabel, type RegionSelection } from '@/utils/chinaRegions'
 
 const session = ref<MpSession | null>(null)
 const editId = ref('')
 const form = reactive({
   name: '',
   phone: '',
-  province: '浙江省',
-  city: '杭州市',
-  district: '西湖区',
+  province: '',
+  city: '',
+  district: '',
   skills: ['haoka'] as TechSkill[],
   status: 'active' as 'active' | 'disabled',
 })
+
+const regionText = computed(() =>
+  form.province ? regionLabel({ province: form.province, city: form.city, district: form.district }) : '',
+)
 
 onLoad(async (q) => {
   session.value = requireRole('merchant')
@@ -79,7 +90,7 @@ onLoad(async (q) => {
       if (me.district) form.district = me.district
     }
   } catch {
-    /* 用默认地区 */
+    /* 新建时可不预填 */
   }
   if (editId.value) {
     try {
@@ -109,14 +120,10 @@ function onStatus(e: Event) {
   form.status = value ? 'active' : 'disabled'
 }
 
-function pickDistrict() {
-  const districts = ['西湖区', '滨江区', '余杭区', '萧山区', '拱墅区', '上城区']
-  uni.showActionSheet({
-    itemList: districts,
-    success(res) {
-      form.district = districts[res.tapIndex]
-    },
-  })
+function onRegionConfirm(sel: RegionSelection) {
+  form.province = sel.province
+  form.city = sel.city
+  form.district = sel.district
 }
 
 async function save() {
@@ -125,17 +132,25 @@ async function save() {
     showToast('请填写姓名和正确手机号', { type: 'error' })
     return
   }
+  if (!form.province || !form.city || !form.district) {
+    showToast('请选择服务区域', { type: 'error' })
+    return
+  }
   try {
-    await saveTechnician({
-      id: editId.value || undefined,
-      name: form.name,
-      phone: form.phone,
-      province: form.province,
-      city: form.city,
-      district: form.district,
-      skills: form.skills.length ? form.skills : ['haoka'],
-      status: form.status,
-    })
+    await withLoading(
+      () =>
+        saveTechnician({
+          id: editId.value || undefined,
+          name: form.name,
+          phone: form.phone,
+          province: form.province,
+          city: form.city,
+          district: form.district,
+          skills: form.skills.length ? form.skills : ['haoka'],
+          status: form.status,
+        }),
+      '提交中…',
+    )
   } catch (e) {
     showToast(e instanceof Error ? e.message : '保存失败', { type: 'error' })
     return

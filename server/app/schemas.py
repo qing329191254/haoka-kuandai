@@ -221,6 +221,11 @@ class FeedbackHandleIn(CamelModel):
     admin_note: str = ""
 
 
+class CsMessageIn(CamelModel):
+    content: str = ""
+    msg_type: str = "text"
+
+
 class RejectIn(CamelModel):
     reason: str
 

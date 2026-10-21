@@ -46,7 +46,7 @@ import AppFeedback from '@/components/AppFeedback.vue'
 import ListLoadMore from '@/components/ListLoadMore.vue'
 import { usePagedList } from '@/composables/usePagedList'
 import { STATUS_LABEL, type MpOrder } from '@/types/order'
-import { showToast } from '@/store/feedback'
+import { showToast, withLoading } from '@/store/feedback'
 import { dispatchToTech, fetchOrder } from '@/store/orders'
 import { fetchTechnicians } from '@/store/technicians'
 import { requireRole, type MpSession } from '@/store/session'
@@ -88,7 +88,7 @@ function onPick(e: { detail: { value: string } }) {
 async function submit() {
   if (!order.value || !picked.value) return
   const tech = techs.value.find((t) => t.id === picked.value)
-  if (await dispatchToTech(order.value.id, tech?.name || '', picked.value)) {
+  if (await withLoading(() => dispatchToTech(order.value!.id, tech?.name || '', picked.value), '提交中…')) {
     showToast('派单成功', { type: 'success', duration: 800 })
     setTimeout(() => uni.navigateBack(), 800)
   } else {

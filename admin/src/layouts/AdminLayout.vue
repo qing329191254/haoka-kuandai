@@ -60,7 +60,8 @@
           <el-menu-item v-if="can('agents:view')" index="/agents">代理商</el-menu-item>
           <el-menu-item v-if="can('users:view')" index="/users">App 用户</el-menu-item>
           <el-menu-item v-if="can('service:view')" index="/service">客服配置</el-menu-item>
-          <el-menu-item v-if="can('feedback:view')" index="/feedback">客服留言</el-menu-item>
+          <el-menu-item v-if="can('feedback:view')" index="/cs-chat">在线客服</el-menu-item>
+          <el-menu-item v-if="can('feedback:view')" index="/feedback">意见反馈</el-menu-item>
           <el-menu-item v-if="can('content:view')" index="/content">协议与帮助</el-menu-item>
         </el-sub-menu>
 
