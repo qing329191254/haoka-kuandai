@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     sms_sign_name: str = "湖北省觅智科技"
     sms_template_code: str = "SMS_338580206"
     sms_endpoint: str = "dysmsapi.aliyuncs.com"
+    # 仅这些小程序测试号可用固定验证码登录。验证码留空则关闭
+    mp_review_phones: str = "13800001001,13600001111"
+    mp_review_code: str = "123456"
     public_base_url: str = ""
     deposit_amount: float = 5000
     cors_origins: str = "*"

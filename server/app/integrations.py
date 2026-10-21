@@ -34,6 +34,15 @@ class SmsRateLimit(Exception):
 _PHONE = re.compile(r"^1[3-9]\d{9}$")
 
 
+def review_sms_accepted(phone: str, code: str) -> bool:
+    """审核测试号的固定验证码。其他手机号一律不走这条路径。"""
+    review = settings.mp_review_code.strip()
+    if not review:
+        return False
+    allowed = {item.strip() for item in settings.mp_review_phones.split(",") if item.strip()}
+    return phone.strip() in allowed and code.strip() == review
+
+
 def sms_configured() -> bool:
     return bool(
         settings.sms_access_key_id.strip()

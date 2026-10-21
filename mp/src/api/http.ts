@@ -1,6 +1,6 @@
 const TOKEN_KEY = 'haoka_mp_token'
 
-export const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000'
+export const API_BASE = import.meta.env.VITE_API_BASE || 'https://www.lcnh-platform.cn'
 
 export function getToken() {
   return String(uni.getStorageSync(TOKEN_KEY) || '')

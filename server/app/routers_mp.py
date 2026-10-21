@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import merchant_of, require_mp_role, require_portal, tech_of
-from app.integrations import SmsRateLimit, sms_provider
+from app.integrations import SmsRateLimit, review_sms_accepted, sms_provider
 from app.sms_aliyun import SmsSendError
 from app.models import Merchant, MerchantApplication, Order, Technician
 from app.schemas import DeliverFailIn, DeliverOkIn, DispatchIn, FollowUpIn, MpApplyIn, MpLoginIn, RemarkIn, SmsIn, TechIn
@@ -46,9 +46,9 @@ def send_sms(body: SmsIn):
 
 @router.post("/auth/login")
 def login(body: MpLoginIn, db: Session = Depends(get_db)):
-    if not sms_provider.verify(body.phone, body.code):
-        raise HTTPException(400, "验证码错误")
     phone = body.phone.strip()
+    if not review_sms_accepted(phone, body.code) and not sms_provider.verify(phone, body.code):
+        raise HTTPException(400, "验证码错误")
     if body.role == "merchant":
         m = db.query(Merchant).filter(Merchant.login_phone == phone).first()
         if m:
