@@ -11,7 +11,7 @@ from app.util import load_json, new_id, now_str
 AGENT_DISPLAY_NAME = "派客邦客服"
 WELCOME_FALLBACK = (
     "您好，欢迎咨询派客邦客服。请直接描述您的问题，我们会尽快回复。"
-    "也可先点下方快捷入口。"
+    "也可先点下方快捷问题。"
 )
 
 

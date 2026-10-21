@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from app.config import ROOT, settings
+from app.cs_hub import cs_hub
 from app.db import Base, SessionLocal, engine
 from app import models  # noqa: F401  register all tables
 from app.routers_admin import router as admin_router
@@ -65,6 +67,7 @@ finally:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    cs_hub.bind_loop(asyncio.get_running_loop())
     db = SessionLocal()
     try:
         seed_if_empty(db)

@@ -41,7 +41,7 @@
     <el-col :span="8">
       <el-card>
         <template #header>
-          <span>热线与猜你想问</span>
+          <span>热线与快捷问题</span>
         </template>
         <el-form label-width="88px">
           <el-form-item label="客服热线">
@@ -50,7 +50,7 @@
           <el-form-item label="服务时间">
             <el-input v-model="cfg.workTime" />
           </el-form-item>
-          <el-form-item label="猜你想问">
+          <el-form-item label="快捷问题">
             <div class="qr-list">
               <p class="qr-hint">
                 显示在 App 聊天输入框上方。用户点标签会发出「问题」，并自动回复「答案」；答案留空则只发给人工。
@@ -292,7 +292,7 @@ async function saveCfg() {
     .map((q) => ({ prompt: q.prompt.trim(), reply: q.reply.trim() }))
     .filter((q) => q.prompt)
   if (!quickReplies.length) {
-    ElMessage.warning('请至少保留一条「猜你想问」问题标签')
+    ElMessage.warning('请至少保留一条「快捷问题」标签')
     return
   }
   try {

@@ -94,10 +94,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import ListPager from '@/components/ListPager.vue'
-import { get, post } from '@/api/http'
+import { csWsUrl, get, post } from '@/api/http'
 import { usePermission } from '@/composables/usePermission'
 import { includesKw, usePager } from '@/composables/usePager'
 import { withLoading } from '@/utils/loading'
@@ -138,7 +138,10 @@ const messages = ref<CsMessage[]>([])
 const draft = ref('')
 const sending = ref(false)
 const scrollEl = ref<HTMLElement | null>(null)
-let pollTimer: ReturnType<typeof setInterval> | null = null
+let socket: WebSocket | null = null
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let pingTimer: ReturnType<typeof setInterval> | null = null
+let wsAlive = true
 
 const unreadTotal = computed(
   () => conversations.value.filter((c) => c.status === 'open' && c.agentUnread > 0).length,
@@ -177,6 +180,93 @@ async function reload() {
   }
 }
 
+function upsertConversation(item: CsConversation) {
+  const idx = conversations.value.findIndex((c) => c.id === item.id)
+  if (idx >= 0) {
+    conversations.value.splice(idx, 1, item)
+  } else {
+    conversations.value.unshift(item)
+  }
+  conversations.value.sort((a, b) => (b.lastMessageAt || '').localeCompare(a.lastMessageAt || ''))
+}
+
+function connectWs() {
+  if (!wsAlive) return
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+  if (pingTimer) {
+    clearInterval(pingTimer)
+    pingTimer = null
+  }
+  try {
+    socket?.close()
+  } catch {
+    /* ignore */
+  }
+  const url = csWsUrl()
+  if (!url.includes('token=')) return
+  socket = new WebSocket(url)
+  socket.onopen = () => {
+    pingTimer = setInterval(() => {
+      if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'ping' }))
+      }
+    }, 25000)
+    if (current.value?.id) {
+      socket?.send(JSON.stringify({ type: 'watch', conversationId: current.value.id }))
+    }
+  }
+  socket.onmessage = (ev) => {
+    try {
+      const data = JSON.parse(String(ev.data || '{}')) as {
+        type?: string
+        item?: CsMessage | CsConversation
+        conversation?: CsConversation
+      }
+      if (data.type === 'message' && data.item && 'content' in data.item) {
+        const msg = data.item as CsMessage
+        if (current.value && msg.conversationId === current.value.id) {
+          if (!messages.value.some((m) => m.id === msg.id)) {
+            messages.value.push(msg)
+            void scrollBottom()
+          }
+        }
+        if (data.conversation) upsertConversation(data.conversation)
+      } else if (data.type === 'conversation' && data.item && 'userId' in data.item) {
+        upsertConversation(data.item as CsConversation)
+        if (current.value?.id === (data.item as CsConversation).id) {
+          current.value = data.item as CsConversation
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  socket.onclose = () => {
+    if (pingTimer) {
+      clearInterval(pingTimer)
+      pingTimer = null
+    }
+    if (!wsAlive) return
+    reconnectTimer = setTimeout(() => connectWs(), 3000)
+  }
+  socket.onerror = () => {
+    try {
+      socket?.close()
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function watchConversation(cid: string) {
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: 'watch', conversationId: cid }))
+  }
+}
+
 async function openChat(row: CsConversation) {
   current.value = row
   visible.value = true
@@ -189,46 +279,12 @@ async function openChat(row: CsConversation) {
       }>(`/api/admin/cs/conversations/${row.id}`)
       current.value = res.conversation
       messages.value = res.messages || []
-      const idx = conversations.value.findIndex((c) => c.id === row.id)
-      if (idx >= 0) conversations.value[idx] = res.conversation
+      upsertConversation(res.conversation)
     }, '加载中…')
+    watchConversation(row.id)
     await scrollBottom()
-    startPoll()
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '打开会话失败')
-  }
-}
-
-function startPoll() {
-  stopPoll()
-  pollTimer = setInterval(() => void pollMessages(), 3000)
-}
-
-function stopPoll() {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
-}
-
-async function pollMessages() {
-  if (!current.value || !visible.value) return
-  const after = messages.value.length ? messages.value[messages.value.length - 1].id : ''
-  try {
-    const res = await get<{ items?: CsMessage[] }>(
-      `/api/admin/cs/conversations/${current.value.id}/messages`,
-      after ? { after } : undefined,
-    )
-    const items = res.items || []
-    if (!items.length) return
-    const known = new Set(messages.value.map((m) => m.id))
-    const fresh = items.filter((m) => !known.has(m.id))
-    if (!fresh.length) return
-    messages.value.push(...fresh)
-    await scrollBottom()
-    await reload()
-  } catch {
-    /* ignore */
   }
 }
 
@@ -290,15 +346,28 @@ async function closeConv() {
 }
 
 function onDrawerClosed() {
-  stopPoll()
   current.value = null
   messages.value = []
+  watchConversation('')
   void reload()
 }
 
-onUnmounted(() => stopPoll())
+onMounted(() => {
+  void reload()
+  connectWs()
+})
 
-void reload()
+onUnmounted(() => {
+  wsAlive = false
+  if (reconnectTimer) clearTimeout(reconnectTimer)
+  if (pingTimer) clearInterval(pingTimer)
+  try {
+    socket?.close()
+  } catch {
+    /* ignore */
+  }
+  socket = null
+})
 </script>
 
 <style scoped>

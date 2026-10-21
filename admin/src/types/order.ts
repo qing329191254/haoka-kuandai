@@ -232,7 +232,7 @@ export interface ContentDoc {
 }
 
 export interface QuickReply {
-  /** App「猜你想问」标签；点选后作为用户消息发送 */
+  /** App「快捷问题」标签；点选后作为用户消息发送 */
   prompt: string
   /** 自动回复内容；留空则只发给人工 */
   reply: string

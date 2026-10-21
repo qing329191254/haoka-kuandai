@@ -31,8 +31,27 @@ export function setToken(token: string) {
   localStorage.setItem(TOKEN_KEY, token)
 }
 
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY) || ''
+}
+
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
+}
+
+/** 客服 WebSocket 地址（同源或 VITE_API_BASE） */
+export function csWsUrl() {
+  const token = encodeURIComponent(getToken())
+  const base = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '')
+  if (base) {
+    const u = new URL(base)
+    u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
+    u.pathname = '/api/admin/cs/ws'
+    u.search = `token=${token}`
+    return u.toString()
+  }
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${proto}//${location.host}/api/admin/cs/ws?token=${token}`
 }
 
 export async function get<T>(url: string, params?: object) {

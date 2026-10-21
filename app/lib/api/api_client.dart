@@ -149,6 +149,18 @@ class Api {
   static Future<dynamic> put(String path, [Object? body]) =>
       _send('PUT', path, body: body);
 
+  /// 客服 WebSocket：`wss://host/api/app/cs/ws?token=...`
+  static Uri csWsUri() {
+    final t = token ?? '';
+    final httpBase = Uri.parse(base);
+    final scheme = httpBase.scheme == 'https' ? 'wss' : 'ws';
+    return httpBase.replace(
+      scheme: scheme,
+      path: '/api/app/cs/ws',
+      queryParameters: {if (t.isNotEmpty) 'token': t},
+    );
+  }
+
   static Future<String> uploadImage(String filePath, {bool apply = false}) async {
     final path = apply ? '/api/uploads/apply-images' : '/api/uploads/images';
     final uri = Uri.parse('$base$path');

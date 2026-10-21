@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// 与「我的」页统一的视觉 token
 abstract final class AppStyle {
@@ -114,7 +115,39 @@ class SoftCard extends StatelessWidget {
   }
 }
 
-/// 顶部渐变标题区（用于 Tab 页）
+/// Tab 页统一壳：整页一层渐变背景，避免标题区/内容区两块背景接缝发白线。
+class SoftPageScaffold extends StatelessWidget {
+  const SoftPageScaffold({
+    super.key,
+    required this.body,
+    this.statusBarIconBrightness = Brightness.dark,
+  });
+
+  final Widget body;
+  final Brightness statusBarIconBrightness;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: statusBarIconBrightness,
+        statusBarBrightness: statusBarIconBrightness == Brightness.dark
+            ? Brightness.light
+            : Brightness.dark,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: DecoratedBox(
+          decoration: const BoxDecoration(gradient: AppStyle.pageGradient),
+          child: SizedBox.expand(child: body),
+        ),
+      ),
+    );
+  }
+}
+
+/// 顶部标题区（仅文字，不铺独立背景；背景交给 [SoftPageScaffold]）
 class SoftPageHeader extends StatelessWidget {
   const SoftPageHeader({
     super.key,
@@ -130,10 +163,8 @@ class SoftPageHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final top = MediaQuery.paddingOf(context).top;
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.fromLTRB(20, top + 16, 16, 20),
-      decoration: const BoxDecoration(gradient: AppStyle.pageGradient),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, top + 16, 16, 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -147,6 +178,7 @@ class SoftPageHeader extends StatelessWidget {
                     fontSize: 24,
                     fontWeight: FontWeight.w700,
                     color: AppStyle.title,
+                    height: 1.2,
                   ),
                 ),
                 if (subtitle != null) ...[

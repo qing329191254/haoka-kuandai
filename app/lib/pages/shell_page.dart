@@ -4,9 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:haoka_app/services/app_update.dart';
 
 class ShellPage extends StatefulWidget {
-  const ShellPage({super.key, required this.child});
+  const ShellPage({super.key, required this.navigationShell});
 
-  final Widget child;
+  final StatefulNavigationShell navigationShell;
 
   @override
   State<ShellPage> createState() => _ShellPageState();
@@ -27,34 +27,21 @@ class _ShellPageState extends State<ShellPage> {
     });
   }
 
-  int _index(BuildContext context) {
-    final loc = GoRouterState.of(context).uri.path;
-    if (loc.startsWith('/orders')) return 1;
-    if (loc.startsWith('/service')) return 2;
-    if (loc.startsWith('/profile')) return 3;
-    return 0;
-  }
-
   void _onTap(int i) {
     setState(() {
       _bounceIndex = i;
       _bounceToken++;
     });
-    switch (i) {
-      case 0:
-        context.go('/');
-      case 1:
-        context.go('/orders');
-      case 2:
-        context.go('/service');
-      case 3:
-        context.go('/profile');
-    }
+    // 同 Tab 再点回到根；切 Tab 保活（IndexedStack），避免客服页每次重建转圈
+    widget.navigationShell.goBranch(
+      i,
+      initialLocation: i == widget.navigationShell.currentIndex,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final selected = _index(context);
+    final selected = widget.navigationShell.currentIndex;
     final primary = Theme.of(context).colorScheme.primary;
     const inactive = Color(0xFF8A8F99);
 
@@ -69,7 +56,7 @@ class _ShellPageState extends State<ShellPage> {
         systemNavigationBarDividerColor: Colors.transparent,
       ),
       child: Scaffold(
-        body: widget.child,
+        body: widget.navigationShell,
         bottomNavigationBar: ColoredBox(
           color: Colors.white,
           child: SafeArea(

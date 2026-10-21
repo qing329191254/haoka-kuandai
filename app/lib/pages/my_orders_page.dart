@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:haoka_app/models/order.dart';
@@ -118,21 +117,15 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
       });
     }
 
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-      ),
-      child: Scaffold(
-        backgroundColor: AppStyle.pageBg,
-        body: Column(
-          children: [
-            SoftPageHeader(
-              title: '我的订单',
-              subtitle: _subtitle(store, session, total),
-            ),
-            Material(
-              color: Colors.white,
+    return SoftPageScaffold(
+      body: Column(
+        children: [
+          SoftPageHeader(
+            title: '我的订单',
+            subtitle: _subtitle(store, session, total),
+          ),
+          Material(
+            color: Colors.white,
               child: Column(
                 children: [
                   Padding(
@@ -320,7 +313,6 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
             ),
           ],
         ),
-      ),
     );
   }
 }

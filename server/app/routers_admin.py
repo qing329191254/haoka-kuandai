@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketException, status
+from jwt import InvalidTokenError
 from sqlalchemy.orm import Session
 
 from app.cs_chat import (
@@ -12,7 +13,8 @@ from app.cs_chat import (
     list_messages,
     mark_read_for_agent,
 )
-from app.db import get_db
+from app.cs_hub import cs_hub, ws_receive_loop
+from app.db import SessionLocal, get_db
 from app.deps import require_perm, require_portal
 from app.models import (
     Agent,
@@ -53,7 +55,7 @@ from app.schemas import (
     WarehouseIn,
 )
 from app.deposit import VALID_SCALES, deposit_rule_out, normalize_scale
-from app.security import create_token, hash_password, verify_password
+from app.security import create_token, decode_token, hash_password, verify_password
 from app.serialize import (
     agent_app_out,
     agent_out,
@@ -589,6 +591,7 @@ def cs_conversation_reply(
     mark_read_for_agent(db, conv)
     db.commit()
     db.refresh(msg)
+    cs_hub.publish_message(conv, msg)
     return {"ok": True, "item": cs_message_out(msg, for_admin=True)}
 
 
@@ -604,7 +607,40 @@ def cs_conversation_close(
     conv.status = "closed"
     conv.updated_at = now_str()
     db.commit()
+    cs_hub.publish_conversation(conv)
     return cs_conversation_out(conv)
+
+
+@router.websocket("/cs/ws")
+async def cs_admin_ws(websocket: WebSocket, token: str = ""):
+    """管理端客服实时通道。连接后可发 {"type":"watch","conversationId":"..."}。"""
+    raw = (token or "").strip()
+    if not raw:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="missing token")
+    try:
+        payload = decode_token(raw)
+    except InvalidTokenError:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="invalid token")
+    if payload.get("portal") != "admin":
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="forbidden")
+
+    db = SessionLocal()
+    peer = None
+    try:
+        staff = db.get(Staff, payload.get("sub") or "")
+        if not staff or staff.status != "active":
+            raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="forbidden")
+        role = db.get(Role, staff.role_id)
+        perms = json.loads(role.permissions or "[]") if role else []
+        if "*" not in perms and "feedback:view" not in perms:
+            raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="no permission")
+        peer = await cs_hub.connect(websocket, role="admin")
+        await websocket.send_json({"type": "ready"})
+        await ws_receive_loop(peer)
+    finally:
+        if peer is not None:
+            cs_hub.disconnect(peer)
+        db.close()
 
 
 @router.get("/faqs")

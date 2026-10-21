@@ -22,6 +22,7 @@ dependencies:
   package_info_plus: ^10.2.1
   path_provider: ^2.1.6
   tobias: ^5.1.0
+  web_socket_channel: ^3.0.3
 
 dev_dependencies:
   flutter_test:

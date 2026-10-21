@@ -1,7 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:haoka_app/api/api_client.dart';
@@ -11,6 +11,7 @@ import 'package:haoka_app/widgets/app_surface.dart';
 import 'package:haoka_app/widgets/app_toast.dart';
 import 'package:haoka_app/widgets/user_avatar.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 /// 在线客服：气泡聊天（用户侧统一显示「派客邦客服」）。
 class CustomerServicePage extends StatefulWidget {
@@ -31,7 +32,12 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
   bool _loading = true;
   bool _sending = false;
   bool _showEmoji = false;
-  Timer? _poll;
+  bool _didInitialScroll = false;
+  WebSocketChannel? _ws;
+  StreamSubscription? _wsSub;
+  Timer? _wsReconnect;
+  Timer? _wsPing;
+  bool _wsDisposed = false;
 
   static const _emojis = [
     '😀', '😁', '😂', '🤣', '😊', '😍', '😘', '😜',
@@ -47,7 +53,13 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
 
   @override
   void dispose() {
-    _poll?.cancel();
+    _wsDisposed = true;
+    _wsReconnect?.cancel();
+    _wsPing?.cancel();
+    _wsSub?.cancel();
+    try {
+      _ws?.sink.close();
+    } catch (_) {}
     _input.dispose();
     _scroll.dispose();
     super.dispose();
@@ -56,12 +68,14 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
   Future<void> _bootstrap() async {
     await CustomerServiceData.refresh();
     await _loadSession();
-    _poll?.cancel();
-    _poll = Timer.periodic(const Duration(seconds: 3), (_) => _pollNew());
+    if (mounted) _connectWs();
   }
 
-  Future<void> _loadSession() async {
-    setState(() => _loading = true);
+  Future<void> _loadSession({bool silent = false}) async {
+    final showSpinner = !silent && _messages.isEmpty;
+    if (showSpinner && mounted) {
+      setState(() => _loading = true);
+    }
     try {
       final data = Map<String, dynamic>.from(
         await Api.get('/api/app/cs/session') as Map,
@@ -71,6 +85,7 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
           .map((e) => _ChatMsg.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList();
       if (!mounted) return;
+      final wasEmpty = _messages.isEmpty;
       setState(() {
         _conversationId = '${conv['id'] ?? ''}';
         _agentDisplayName = '${data['agentDisplayName'] ?? '派客邦客服'}';
@@ -79,39 +94,97 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
           ..addAll(items);
         _loading = false;
       });
-      _scrollToBottom(jump: true);
+      if (wasEmpty || !_didInitialScroll) {
+        _didInitialScroll = true;
+        _scrollToBottom(jump: true);
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      AppToast.tip(context, e.message);
+      if (!silent) AppToast.tip(context, e.message);
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
-      AppToast.tip(context, '客服加载失败，请稍后重试');
+      if (!silent) AppToast.tip(context, '客服加载失败，请稍后重试');
     }
   }
 
-  Future<void> _pollNew() async {
-    if (!mounted || _conversationId.isEmpty || _sending) return;
-    final after = _messages.isEmpty ? '' : _messages.last.id;
+  void _connectWs() {
+    _wsReconnect?.cancel();
+    _wsPing?.cancel();
+    _wsSub?.cancel();
     try {
-      final data = Map<String, dynamic>.from(
-        await Api.get(
-          '/api/app/cs/messages',
-          query: {if (after.isNotEmpty) 'after': after},
-        ) as Map,
+      _ws?.sink.close();
+    } catch (_) {}
+    if (_wsDisposed || !mounted) return;
+    final token = Api.token;
+    if (token == null || token.isEmpty) return;
+
+    try {
+      final channel = WebSocketChannel.connect(Api.csWsUri());
+      _ws = channel;
+      _wsSub = channel.stream.listen(
+        _onWsData,
+        onError: (_) => _scheduleWsReconnect(),
+        onDone: _scheduleWsReconnect,
+        cancelOnError: true,
       );
-      final items = (data['items'] as List? ?? [])
-          .map((e) => _ChatMsg.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList();
-      if (items.isEmpty || !mounted) return;
-      final known = _messages.map((e) => e.id).toSet();
-      final fresh = items.where((e) => !known.contains(e.id)).toList();
-      if (fresh.isEmpty) return;
-      setState(() => _messages.addAll(fresh));
-      _scrollToBottom();
+      _wsPing = Timer.periodic(const Duration(seconds: 25), (_) {
+        try {
+          _ws?.sink.add(jsonEncode({'type': 'ping'}));
+        } catch (_) {}
+      });
     } catch (_) {
-      /* 轮询失败静默忽略 */
+      _scheduleWsReconnect();
+    }
+  }
+
+  void _scheduleWsReconnect() {
+    _wsPing?.cancel();
+    _wsReconnect?.cancel();
+    if (_wsDisposed || !mounted) return;
+    _wsReconnect = Timer(const Duration(seconds: 3), () {
+      if (!_wsDisposed && mounted) _connectWs();
+    });
+  }
+
+  void _onWsData(dynamic raw) {
+    try {
+      final data = raw is String
+          ? jsonDecode(raw)
+          : raw is Map
+          ? raw
+          : null;
+      if (data is! Map) return;
+      final map = Map<String, dynamic>.from(data);
+      final type = '${map['type'] ?? ''}';
+      if (type == 'message') {
+        final itemRaw = map['item'];
+        if (itemRaw is! Map) return;
+        final itemMap = Map<String, dynamic>.from(itemRaw);
+        final cid = '${itemMap['conversationId'] ?? ''}';
+        if (_conversationId.isNotEmpty &&
+            cid.isNotEmpty &&
+            cid != _conversationId) {
+          return;
+        }
+        final msg = _ChatMsg.fromJson(itemMap);
+        if (!mounted || msg.id.isEmpty) return;
+        if (_messages.any((e) => e.id == msg.id)) return;
+        setState(() => _messages.add(msg));
+        _scrollToBottom();
+      } else if (type == 'ready') {
+        final cid = '${map['conversationId'] ?? ''}';
+        if (cid.isNotEmpty) {
+          setState(() => _conversationId = cid);
+        }
+        final name = '${map['agentDisplayName'] ?? ''}';
+        if (name.isNotEmpty) {
+          setState(() => _agentDisplayName = name);
+        }
+      }
+    } catch (_) {
+      /* ignore malformed frames */
     }
   }
 
@@ -256,64 +329,53 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
     final user = context.watch<AuthStore>().user;
     final quick = CustomerServiceData.quickReplies;
 
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-      ),
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF2F3F5),
-        appBar: AppBar(
-          title: const Text('人工客服'),
-          backgroundColor: AppStyle.brand,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          centerTitle: true,
-          systemOverlayStyle: SystemUiOverlayStyle.light,
-        ),
-        body: Column(
-          children: [
-            _Banner(
-              workTime: CustomerServiceData.workTime,
-              hotline: CustomerServiceData.hotline,
-              onCall: _callHotline,
-            ),
+    final workTime = CustomerServiceData.workTime.trim();
+    final headerSubtitle = workTime.isEmpty
+        ? '在线沟通 · 有问题随时找我们'
+        : '在线沟通 · 服务时间 $workTime';
+
+    return SoftPageScaffold(
+      body: Column(
+        children: [
+          SoftPageHeader(
+            title: '人工客服',
+            subtitle: headerSubtitle,
+          ),
+          _Banner(
+            hotline: CustomerServiceData.hotline,
+            onCall: _callHotline,
+          ),
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
-                  : RefreshIndicator(
-                      color: AppStyle.brand,
-                      onRefresh: _loadSession,
-                      child: ListView.builder(
-                        controller: _scroll,
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, i) {
-                          final msg = _messages[i];
-                          final prev = i > 0 ? _messages[i - 1] : null;
-                          return Column(
-                            children: [
-                              if (_showTime(msg, prev))
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                  child: Text(
-                                    _formatTime(msg.createdAt),
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Color(0xFF9AA3B2),
-                                    ),
+                  : ListView.builder(
+                      controller: _scroll,
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                      itemCount: _messages.length,
+                      itemBuilder: (context, i) {
+                        final msg = _messages[i];
+                        final prev = i > 0 ? _messages[i - 1] : null;
+                        return Column(
+                          children: [
+                            if (_showTime(msg, prev))
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                child: Text(
+                                  _formatTime(msg.createdAt),
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF9AA3B2),
                                   ),
                                 ),
-                              _Bubble(
-                                msg: msg,
-                                agentName: _agentDisplayName,
-                                user: user,
                               ),
-                            ],
-                          );
-                        },
-                      ),
+                            _Bubble(
+                              msg: msg,
+                              agentName: _agentDisplayName,
+                              user: user,
+                            ),
+                          ],
+                        );
+                      },
                     ),
             ),
             if (quick.isNotEmpty)
@@ -323,7 +385,7 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      '猜你想问',
+                      '快捷问题',
                       style: TextStyle(fontSize: 12, color: Color(0xFF9AA3B2)),
                     ),
                     const SizedBox(height: 6),
@@ -375,7 +437,6 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
               ),
           ],
         ),
-      ),
     );
   }
 }
@@ -413,71 +474,62 @@ class _ChatMsg {
 
 class _Banner extends StatelessWidget {
   const _Banner({
-    required this.workTime,
     required this.hotline,
     required this.onCall,
   });
 
-  final String workTime;
   final String hotline;
   final VoidCallback onCall;
 
   @override
   Widget build(BuildContext context) {
-    final canCall = hotline.trim().isNotEmpty;
-    final child = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: Colors.white,
-            child: Icon(Icons.support_agent, color: AppStyle.brand, size: 20),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final phone = hotline.trim();
+    if (phone.isEmpty) return const SizedBox.shrink();
+
+    // 不另铺底色，避免与整页渐变形成接缝；只用描边卡片浮在同一背景上
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Material(
+        color: Colors.white.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onCall,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
               children: [
-                Text(
-                  workTime.isEmpty
-                      ? '人工客服在线为您服务'
-                      : '服务时间 $workTime',
-                  style: const TextStyle(
-                    color: AppStyle.title,
-                    fontSize: 13,
-                    height: 1.35,
-                    fontWeight: FontWeight.w600,
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: AppStyle.brand.withValues(alpha: 0.1),
+                  child: Icon(
+                    Icons.phone_in_talk_outlined,
+                    color: AppStyle.brand,
+                    size: 18,
                   ),
                 ),
-                if (canCall) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    '点击拨打 $hotline',
-                    style: TextStyle(
-                      color: AppStyle.brand.withValues(alpha: 0.9),
-                      fontSize: 12,
-                      height: 1.3,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '客服热线 $phone（点击拨打）',
+                    style: const TextStyle(
+                      color: AppStyle.title,
+                      fontSize: 13,
+                      height: 1.35,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ],
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppStyle.chevron,
+                  size: 22,
+                ),
               ],
             ),
           ),
-          if (canCall)
-            Icon(Icons.phone_in_talk_outlined, color: AppStyle.brand, size: 22),
-        ],
+        ),
       ),
-    );
-
-    return Material(
-      color: const Color(0xFFE3F2FD),
-      child: canCall
-          ? InkWell(
-              onTap: onCall,
-              child: child,
-            )
-          : child,
     );
   }
 }

@@ -98,34 +98,53 @@ GoRouter createRouter(AuthStore auth) {
         path: '/audit/contract',
         builder: (context, state) => const ContractSignPage(),
       ),
-      ShellRoute(
-        builder: (context, state, child) => ShellPage(child: child),
-        routes: [
-          GoRoute(
-            path: '/',
-            pageBuilder: (context, state) =>
-                NoTransitionPage(key: state.pageKey, child: const HomePage()),
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) =>
+            ShellPage(navigationShell: navigationShell),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/',
+                pageBuilder: (context, state) => NoTransitionPage(
+                  key: state.pageKey,
+                  child: const HomePage(),
+                ),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/orders',
-            pageBuilder: (context, state) => NoTransitionPage(
-              key: state.pageKey,
-              child: const MyOrdersPage(),
-            ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/orders',
+                pageBuilder: (context, state) => NoTransitionPage(
+                  key: state.pageKey,
+                  child: const MyOrdersPage(),
+                ),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/service',
-            pageBuilder: (context, state) => NoTransitionPage(
-              key: state.pageKey,
-              child: const CustomerServicePage(),
-            ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/service',
+                pageBuilder: (context, state) => NoTransitionPage(
+                  key: state.pageKey,
+                  child: const CustomerServicePage(),
+                ),
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/profile',
-            pageBuilder: (context, state) => NoTransitionPage(
-              key: state.pageKey,
-              child: const ProfilePage(),
-            ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/profile',
+                pageBuilder: (context, state) => NoTransitionPage(
+                  key: state.pageKey,
+                  child: const ProfilePage(),
+                ),
+              ),
+            ],
           ),
         ],
       ),

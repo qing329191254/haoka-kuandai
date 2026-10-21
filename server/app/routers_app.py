@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketException, status
+from jwt import InvalidTokenError
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.deposit import quote_deposit
-from app.db import get_db
+from app.db import SessionLocal, get_db
 from app.deps import app_user_of, require_portal
 from app.integrations import SmsRateLimit, esign_provider, pay_provider, sms_provider
 from app.sms_aliyun import SmsSendError
@@ -19,6 +20,7 @@ from app.cs_chat import (
     mark_read_for_user,
     match_quick_reply,
 )
+from app.cs_hub import cs_hub, ws_receive_loop
 from app.models import Agent, AgentApplication, AppUser, Feedback, Merchant, Order, Product
 from app.schemas import (
     AppLoginIn,
@@ -32,7 +34,7 @@ from app.schemas import (
     OrderCreateIn,
     SmsIn,
 )
-from app.security import create_token, hash_password, verify_password
+from app.security import create_token, decode_token, hash_password, verify_password
 from app.serialize import app_user_out, feedback_out, order_out
 from app.services import append_log
 from app.util import dump_json, load_json, new_id, now_str, order_no
@@ -392,6 +394,7 @@ def cs_poll_messages(
     payload: dict = Depends(require_portal("app")),
     db: Session = Depends(get_db),
 ):
+    """兼容旧客户端轮询；新版走 WebSocket。"""
     user = app_user_of(db, payload)
     conv = get_or_create_conversation(db, user)
     msgs = list_messages(db, conv.id, after_id=(after or "").strip(), limit=100)
@@ -424,7 +427,7 @@ def cs_send_message(
             raise HTTPException(400, "单条消息过长")
     conv = get_or_create_conversation(db, user)
     msg = add_message(db, conv, sender_type="user", content=content, msg_type=msg_type)
-    auto_item = None
+    auto_msg = None
     if msg_type == "text":
         auto_text = match_quick_reply(db, content)
         if auto_text:
@@ -436,12 +439,53 @@ def cs_send_message(
                 msg_type="text",
                 agent_name=AGENT_DISPLAY_NAME,
             )
-            auto_item = cs_message_out(auto_msg, for_admin=False)
     mark_read_for_user(db, conv)
     db.commit()
     db.refresh(msg)
+    if auto_msg is not None:
+        db.refresh(auto_msg)
+    cs_hub.publish_message(conv, msg)
+    auto_item = None
+    if auto_msg is not None:
+        cs_hub.publish_message(conv, auto_msg)
+        auto_item = cs_message_out(auto_msg, for_admin=False)
     return {
         "ok": True,
         "item": cs_message_out(msg, for_admin=False),
         "autoReply": auto_item,
     }
+
+
+@router.websocket("/cs/ws")
+async def cs_app_ws(websocket: WebSocket, token: str = ""):
+    """App 客服实时通道。连接：/api/app/cs/ws?token=JWT"""
+    raw = (token or "").strip()
+    if not raw:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="missing token")
+    try:
+        payload = decode_token(raw)
+    except InvalidTokenError:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="invalid token")
+    if payload.get("portal") != "app":
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="forbidden")
+
+    db = SessionLocal()
+    peer = None
+    try:
+        user = app_user_of(db, payload)
+        conv = get_or_create_conversation(db, user)
+        mark_read_for_user(db, conv)
+        db.commit()
+        peer = await cs_hub.connect(websocket, role="user", conversation_id=conv.id)
+        await websocket.send_json(
+            {
+                "type": "ready",
+                "conversationId": conv.id,
+                "agentDisplayName": AGENT_DISPLAY_NAME,
+            }
+        )
+        await ws_receive_loop(peer)
+    finally:
+        if peer is not None:
+            cs_hub.disconnect(peer)
+        db.close()

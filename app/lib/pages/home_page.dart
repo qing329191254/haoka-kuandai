@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:haoka_app/widgets/app_surface.dart';
 
@@ -46,90 +45,81 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-      ),
-      child: Scaffold(
-        backgroundColor: AppStyle.pageBg,
-        body: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            SoftPageHeader(
-              title: '派客邦',
-              subtitle: '号卡 · 合约机 · 宽带 · WIFI · 存量',
-              trailing: IconButton(
-                tooltip: '客服',
-                onPressed: () => context.go('/service'),
-                icon: const Icon(
-                  Icons.support_agent_outlined,
-                  color: Color(0xFF5A6A7A),
-                ),
+    return SoftPageScaffold(
+      body: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          SoftPageHeader(
+            title: '派客邦',
+            subtitle: '号卡 · 合约机 · 宽带 · WIFI · 存量',
+            trailing: IconButton(
+              tooltip: '客服',
+              onPressed: () => context.go('/service'),
+              icon: const Icon(
+                Icons.support_agent_outlined,
+                color: Color(0xFF5A6A7A),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
-              child: Column(
-                children: [
-                  for (final e in _entries)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: SoftCard(
-                        padding: const EdgeInsets.all(14),
-                        onTap: () => context.push(e.path),
-                        child: Row(
-                          children: [
-                            SoftIconTile(icon: e.icon, size: 48),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    e.title,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppStyle.title,
-                                    ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+            child: Column(
+              children: [
+                for (final e in _entries)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: SoftCard(
+                      padding: const EdgeInsets.all(14),
+                      onTap: () => context.push(e.path),
+                      child: Row(
+                        children: [
+                          SoftIconTile(icon: e.icon, size: 48),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  e.title,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppStyle.title,
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    e.guide,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: AppStyle.subtitle,
-                                      height: 1.35,
-                                    ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  e.guide,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppStyle.subtitle,
+                                    height: 1.35,
                                   ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    e.hint,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: AppStyle.brand.withValues(
-                                        alpha: 0.9,
-                                      ),
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  e.hint,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppStyle.brand.withValues(alpha: 0.9),
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                            const Icon(
-                              Icons.chevron_right,
-                              color: AppStyle.chevron,
-                            ),
-                          ],
-                        ),
+                          ),
+                          const Icon(
+                            Icons.chevron_right,
+                            color: AppStyle.chevron,
+                          ),
+                        ],
                       ),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
