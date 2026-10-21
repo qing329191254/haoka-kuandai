@@ -1,3 +1,5 @@
+# Legacy SSH deploy. The cloud host now updates itself from git:
+# run server\install_auto_deploy.ps1 once, then push to main.
 # One-command deploy from this PC to the cloud host.
 # Packs server\app\*.py, uploads one zip, asks the server task to restart.
 # Does not upload .env.
