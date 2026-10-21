@@ -49,13 +49,17 @@ function Sync-Tree([string]$Source, [string]$Destination) {
 }
 
 function Ensure-ApiTask {
+    $bat = Join-Path $AppRoot "start_api.bat"
     $existing = Get-ScheduledTask -TaskName "HaokaUvicorn" -ErrorAction SilentlyContinue
-    if ($existing) { return }
-    $action = New-ScheduledTaskAction -Execute (Join-Path $AppRoot "start_api.bat") -WorkingDirectory $AppRoot
+    if ($existing -and $existing.Actions.Count -gt 0 -and $existing.Actions[0].Execute -eq $bat) {
+        return
+    }
+    $action = New-ScheduledTaskAction -Execute $bat -WorkingDirectory $AppRoot
     $trigger = New-ScheduledTaskTrigger -AtStartup
     $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-    Register-ScheduledTask -TaskName "HaokaUvicorn" -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null
-    Write-Log "registered HaokaUvicorn"
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
+    Register-ScheduledTask -TaskName "HaokaUvicorn" -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+    Write-Log "HaokaUvicorn uses $bat"
 }
 
 function Restart-Api {
@@ -145,12 +149,22 @@ if (-not (Test-Path $Python)) {
     exit 1
 }
 
-if (Test-Path $LockPath) {
-    $age = (Get-Date) - (Get-Item $LockPath).LastWriteTime
-    if ($age.TotalMinutes -lt 45) { exit 0 }
+function Test-DeployLockHeld {
+    if (-not (Test-Path $LockPath)) { return $false }
+    $ownerText = ""
+    try { $ownerText = (Get-Content -Path $LockPath -Raw).Trim() } catch { return $true }
+    if ($ownerText -notmatch '^\d+$') { return $true }
+    $owner = Get-Process -Id ([int]$ownerText) -ErrorAction SilentlyContinue
+    if (-not $owner) { return $false }
+    return $owner.ProcessName -match 'powershell|pwsh'
+}
+
+if (Test-DeployLockHeld) {
+    Write-Host "deploy already running; a newer push waits until this round finishes"
+    exit 0
 }
 New-Item -ItemType Directory -Force -Path $AppRoot | Out-Null
-Set-Content -Path $LockPath -Value (Get-Date -Format o) -Encoding ASCII
+Set-Content -Path $LockPath -Value $PID -Encoding ASCII
 
 try {
     $script:Git = Find-Git
@@ -165,6 +179,10 @@ try {
         Invoke-Git @("clone", "--branch", "main", "--single-branch", $RepoUrl, $Repo)
     }
 
+    Ensure-ApiTask
+    $rounds = 0
+    while ($rounds -lt 3) {
+    $rounds++
     Write-Log "fetch origin/main"
     Invoke-Git @("-C", $Repo, "fetch", "origin", "main")
     Invoke-Git @("-C", $Repo, "reset", "--hard", "origin/main")
@@ -174,7 +192,7 @@ try {
     $previousSha = ""
     if (Test-Path $ApiShaPath) { $previousSha = (Get-Content -Path $ApiShaPath -Raw).Trim() }
 
-    $apiChanged = $Force -or -not $previousSha
+    $apiChanged = ($Force -and $rounds -eq 1) -or -not $previousSha
     if (-not $apiChanged -and $previousSha -ne $remoteSha) {
         $names = & $script:Git -c "safe.directory=*" -C $Repo diff --name-only $previousSha $remoteSha -- server/app server/requirements.txt server/start_api.bat
         if ($LASTEXITCODE -ne 0) { throw "cannot diff api" }
@@ -216,6 +234,11 @@ try {
         }
 
         Set-Location $AppRoot
+        $prefix = (& $Python -c "import sys; print(sys.prefix)").Trim()
+        if ($prefix.ToLower() -notlike "c:\haoka\server\.venv*") {
+            throw "refusing system python, prefix=$prefix"
+        }
+        Write-Log "venv python $prefix"
         & $Python -c "import app.main" > (Join-Path $AppRoot "import_err.txt") 2>&1
         if ($LASTEXITCODE -ne 0) {
             Restore-App $backup
@@ -247,6 +270,13 @@ try {
         Update-Admin $remoteSha
     } catch {
         Write-Log ("admin_fail=" + $_.Exception.Message)
+    }
+
+    Invoke-Git @("-C", $Repo, "fetch", "origin", "main")
+    $latestSha = (& $script:Git -c "safe.directory=*" -C $Repo rev-parse "origin/main").Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $latestSha) { throw "cannot read origin/main" }
+    if ($latestSha -eq $remoteSha) { break }
+    Write-Log "newer commit arrived during deploy, run again"
     }
 } catch {
     Write-Log ("deploy_fail=" + $_.Exception.Message)
