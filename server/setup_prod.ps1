@@ -1,4 +1,6 @@
-﻿# SETUP_PROD_V4
+﻿# SETUP_PROD_V4 — first-time cloud bootstrap only (MySQL/venv/etc).
+# Current production API is start_api.bat on :443 + HTTPS (HaokaUvicorn / auto_deploy).
+# Do not treat the :8888 snippets below as live config.
 # Run on the cloud host: powershell -ExecutionPolicy Bypass -File setup_prod.ps1
 # ASCII-only so Windows PowerShell 5.1 (GBK) can parse it.
 $ErrorActionPreference = "Stop"
