@@ -1,9 +1,22 @@
 # Run once in Windows PowerShell on the cloud host (ecm-ed7c).
 # Installs a portable Git if needed, clones the repo, and checks main every minute.
 $ErrorActionPreference = "Continue"
+$ProgressPreference = "SilentlyContinue"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$GitZip = "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.2/MinGit-2.56.0.2-64-bit.zip"
+function Save-Zip([string]$Destination, [string[]]$Urls) {
+    if (Test-Path $Destination) { Remove-Item $Destination -Force }
+    foreach ($url in $Urls) {
+        Write-Host "get $url"
+        & curl.exe -L --connect-timeout 20 --retry 2 --retry-delay 2 -o $Destination $url
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $Destination) -and (Get-Item $Destination).Length -gt 1MB) {
+            return
+        }
+        Write-Host "failed $url"
+        if (Test-Path $Destination) { Remove-Item $Destination -Force -ErrorAction SilentlyContinue }
+    }
+    throw "download failed: $Destination"
+}
 $NodeVersion = "v24.22.0"
 $NodeZipName = "node-v24.22.0-win-x64.zip"
 $GitExe = "C:\haoka\git\cmd\git.exe"
@@ -30,7 +43,10 @@ if (-not $git) {
     Write-Host "downloading Git"
     New-Item -ItemType Directory -Force -Path C:\haoka | Out-Null
     $zip = "C:\haoka\MinGit.zip"
-    Invoke-WebRequest -Uri $GitZip -OutFile $zip
+    Save-Zip $zip @(
+        "https://mirrors.huaweicloud.com/git-for-windows/v2.56.0.windows.2/MinGit-2.56.0.2-64-bit.zip",
+        "https://cdn.npmmirror.com/binaries/git-for-windows/v2.56.0.windows.2/MinGit-2.56.0.2-64-bit.zip"
+    )
     if (Test-Path "C:\haoka\git") { Remove-Item "C:\haoka\git" -Recurse -Force }
     Expand-Archive -Path $zip -DestinationPath "C:\haoka\git" -Force
     Remove-Item $zip -Force
@@ -42,21 +58,10 @@ $npm = "C:\haoka\node\npm.cmd"
 if (-not (Test-Path $npm) -and -not (Test-Path "C:\Program Files\nodejs\npm.cmd")) {
     Write-Host "downloading Node.js"
     $zip = "C:\haoka\$NodeZipName"
-    $urls = @(
-        "https://npmmirror.com/mirrors/node/$NodeVersion/$NodeZipName",
-        "https://nodejs.org/dist/$NodeVersion/$NodeZipName"
+    Save-Zip $zip @(
+        "https://cdn.npmmirror.com/binaries/node/$NodeVersion/$NodeZipName",
+        "https://npmmirror.com/mirrors/node/$NodeVersion/$NodeZipName"
     )
-    $downloaded = $false
-    foreach ($url in $urls) {
-        try {
-            Invoke-WebRequest -Uri $url -OutFile $zip
-            $downloaded = $true
-            break
-        } catch {
-            Write-Host "node download failed: $url"
-        }
-    }
-    if (-not $downloaded) { throw "node download failed" }
     $unpack = "C:\haoka\node-unpack"
     if (Test-Path $unpack) { Remove-Item $unpack -Recurse -Force }
     Expand-Archive -Path $zip -DestinationPath $unpack -Force
