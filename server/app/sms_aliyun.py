@@ -7,13 +7,21 @@ import hashlib
 import hmac
 import json
 import logging
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 from datetime import datetime, timezone
 
+import certifi
+
 logger = logging.getLogger("sms")
+
+
+def _ssl_context() -> ssl.SSLContext:
+    # Windows 云主机常缺系统 CA，改用 certifi 根证书包。
+    return ssl.create_default_context(cafile=certifi.where())
 
 _MESSAGES = {
     "isv.MOBILE_NUMBER_ILLEGAL": "手机号格式不正确",
@@ -86,7 +94,7 @@ def send_code(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
+        with urllib.request.urlopen(request, timeout=10, context=_ssl_context()) as response:
             raw = response.read().decode()
     except urllib.error.HTTPError as exc:
         raw = exc.read().decode(errors="replace")
