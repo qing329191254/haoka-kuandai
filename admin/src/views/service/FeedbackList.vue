@@ -120,10 +120,7 @@ const current = ref<FeedbackItem | null>(null)
 const form = reactive({ reply: '', note: '' })
 
 const pendingCount = computed(
-  () =>
-    store.feedbacks.filter(
-      (f) => (f.channel || 'app_feedback') === 'app_feedback' && f.status === 'pending',
-    ).length,
+  () => store.feedbacks.filter((f) => f.status === 'pending').length,
 )
 
 const detailTitle = computed(() => {
@@ -133,7 +130,6 @@ const detailTitle = computed(() => {
 
 const { page, pageSize, filtered, paged } = usePager(() =>
   store.feedbacks.filter((f) => {
-    if ((f.channel || 'app_feedback') !== 'app_feedback') return false
     if (type.value && f.type !== type.value) return false
     if (status.value && f.status !== status.value) return false
     const k = keyword.value.trim()

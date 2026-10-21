@@ -207,7 +207,7 @@ class Feedback(Base):
     contact: Mapped[str] = mapped_column(String(80), default="")
     user_name: Mapped[str] = mapped_column(String(80), default="")
     user_id: Mapped[str] = mapped_column(String(32), default="", index=True)
-    # service_message=客服留言(已弃用) | app_feedback=意见反馈
+    # app_feedback=意见反馈（在线客服走 cs_conversations / cs_messages）
     channel: Mapped[str] = mapped_column(String(32), default="app_feedback", index=True)
     created_at: Mapped[str] = mapped_column(String(32))
     status: Mapped[str] = mapped_column(String(16), default="pending")

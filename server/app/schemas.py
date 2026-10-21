@@ -36,11 +36,6 @@ class AppLoginIn(CamelModel):
     password: str
 
 
-class AppSmsLoginIn(CamelModel):
-    phone: str
-    code: str
-
-
 class AppResetIn(CamelModel):
     phone: str
     code: str
@@ -212,7 +207,6 @@ class FeedbackIn(CamelModel):
     type: str = "其他"
     content: str
     contact: str = ""
-    channel: str = "app_feedback"
 
 
 class FeedbackHandleIn(CamelModel):

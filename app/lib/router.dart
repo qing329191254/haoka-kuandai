@@ -37,19 +37,14 @@ GoRouter createRouter(AuthStore auth) {
       final approved = auth.canPlaceOrder;
       final onboarding = auth.user?.onboardingPath;
       final onAuthPage =
-          loc == '/login' ||
-          loc == '/login/apply' ||
-          loc == '/login/forgot' ||
-          loc == '/login/account' ||
-          loc == '/login/register';
+          loc == '/login' || loc == '/login/apply' || loc == '/login/forgot';
       final onPublicDoc =
           loc == '/profile/agreement' || loc == '/profile/privacy';
       final onAuditFlow =
           loc == '/audit' ||
           loc == '/audit/deposit' ||
           loc == '/audit/contract';
-      final onService =
-          loc == '/service' || loc.startsWith('/service/');
+      final onService = loc == '/service';
 
       if (!loggedIn && !onAuthPage && !onPublicDoc) return '/login';
 
@@ -86,12 +81,6 @@ GoRouter createRouter(AuthStore auth) {
       GoRoute(
         path: '/login/apply',
         builder: (context, state) => const AgentApplyPage(),
-      ),
-      // 兼容旧入口
-      GoRoute(path: '/login/account', redirect: (context, state) => '/login'),
-      GoRoute(
-        path: '/login/register',
-        redirect: (context, state) => '/login/apply',
       ),
       GoRoute(
         path: '/login/forgot',
@@ -141,10 +130,6 @@ GoRouter createRouter(AuthStore auth) {
         ],
       ),
       GoRoute(
-        path: '/service/messages',
-        redirect: (context, state) => '/service',
-      ),
-      GoRoute(
         path: '/profile/info',
         builder: (context, state) => const PersonalInfoPage(),
         routes: [
@@ -183,10 +168,6 @@ GoRouter createRouter(AuthStore auth) {
         builder: (context, state) => const FeedbackPage(),
       ),
       GoRoute(
-        path: '/haoka/products',
-        redirect: (context, state) => '/catalog?type=haoka',
-      ),
-      GoRoute(
         path: '/catalog',
         builder: (context, state) {
           final type = state.uri.queryParameters['type'] ?? 'haoka';
@@ -213,13 +194,6 @@ GoRouter createRouter(AuthStore auth) {
       GoRoute(
         path: '/stock/types',
         builder: (context, state) => const StockTypeListPage(),
-      ),
-      GoRoute(
-        path: '/haoka/purchase',
-        redirect: (context, state) {
-          final id = state.uri.queryParameters['id'] ?? '';
-          return '/catalog/purchase?id=$id';
-        },
       ),
       GoRoute(
         path: '/catalog/purchase',

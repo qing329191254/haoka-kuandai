@@ -10,12 +10,14 @@ from app.deps import app_user_of, require_portal
 from app.integrations import SmsRateLimit, esign_provider, pay_provider, sms_provider
 from app.sms_aliyun import SmsSendError
 from app.cs_chat import (
+    AGENT_DISPLAY_NAME,
     add_message,
     cs_conversation_out,
     cs_message_out,
     get_or_create_conversation,
     list_messages,
     mark_read_for_user,
+    match_quick_reply,
 )
 from app.models import Agent, AgentApplication, AppUser, Feedback, Merchant, Order, Product
 from app.schemas import (
@@ -23,7 +25,6 @@ from app.schemas import (
     AppProfilePatch,
     AppRegisterIn,
     AppResetIn,
-    AppSmsLoginIn,
     ContractSignIn,
     CsMessageIn,
     DepositPayIn,
@@ -37,13 +38,6 @@ from app.services import append_log
 from app.util import dump_json, load_json, new_id, now_str, order_no
 
 router = APIRouter(prefix="/api/app", tags=["App 代理"])
-
-
-def _normalize_channel(raw: str | None) -> str:
-    value = (raw or "").strip()
-    if value in {"service_message", "service", "cs", "kefu"}:
-        return "service_message"
-    return "app_feedback"
 
 
 def _latest_app(db: Session, phone: str) -> AgentApplication | None:
@@ -78,18 +72,6 @@ def login(body: AppLoginIn, db: Session = Depends(get_db)):
     user = db.query(AppUser).filter(AppUser.phone == body.phone.strip()).first()
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(400, "手机号或密码错误")
-    if user.status != "active":
-        raise HTTPException(403, "账号已停用")
-    return {**_token_for(user), "user": app_user_out(user, _latest_app(db, user.phone))}
-
-
-@router.post("/auth/login-sms")
-def login_sms(body: AppSmsLoginIn, db: Session = Depends(get_db)):
-    if not sms_provider.verify(body.phone, body.code):
-        raise HTTPException(400, "验证码错误，请重新输入")
-    user = db.query(AppUser).filter(AppUser.phone == body.phone.strip()).first()
-    if not user:
-        raise HTTPException(400, "账号不存在，请先申请入驻")
     if user.status != "active":
         raise HTTPException(403, "账号已停用")
     return {**_token_for(user), "user": app_user_out(user, _latest_app(db, user.phone))}
@@ -350,7 +332,6 @@ def feedback(
     content = (body.content or "").strip()
     if len(content) < 5:
         raise HTTPException(400, "请至少填写 5 个字")
-    channel = _normalize_channel(body.channel)
     row = Feedback(
         id=new_id("fb"),
         type=(body.type or "其他").strip() or "其他",
@@ -358,7 +339,7 @@ def feedback(
         contact=(body.contact or "").strip() or (user.phone if user else ""),
         user_name=(user.nickname if user else "") or "",
         user_id=user.id if user else "",
-        channel=channel,
+        channel="app_feedback",
         created_at=now_str(),
         status="pending",
         reply="",
@@ -443,7 +424,24 @@ def cs_send_message(
             raise HTTPException(400, "单条消息过长")
     conv = get_or_create_conversation(db, user)
     msg = add_message(db, conv, sender_type="user", content=content, msg_type=msg_type)
+    auto_item = None
+    if msg_type == "text":
+        auto_text = match_quick_reply(db, content)
+        if auto_text:
+            auto_msg = add_message(
+                db,
+                conv,
+                sender_type="system",
+                content=auto_text,
+                msg_type="text",
+                agent_name=AGENT_DISPLAY_NAME,
+            )
+            auto_item = cs_message_out(auto_msg, for_admin=False)
     mark_read_for_user(db, conv)
     db.commit()
     db.refresh(msg)
-    return {"ok": True, "item": cs_message_out(msg, for_admin=False)}
+    return {
+        "ok": True,
+        "item": cs_message_out(msg, for_admin=False),
+        "autoReply": auto_item,
+    }

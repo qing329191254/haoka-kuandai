@@ -41,7 +41,7 @@
     <el-col :span="8">
       <el-card>
         <template #header>
-          <span>热线与快捷回复</span>
+          <span>热线与猜你想问</span>
         </template>
         <el-form label-width="88px">
           <el-form-item label="客服热线">
@@ -50,8 +50,11 @@
           <el-form-item label="服务时间">
             <el-input v-model="cfg.workTime" />
           </el-form-item>
-          <el-form-item label="快捷回复">
+          <el-form-item label="猜你想问">
             <div class="qr-list">
+              <p class="qr-hint">
+                显示在 App 聊天输入框上方。用户点标签会发出「问题」，并自动回复「答案」；答案留空则只发给人工。
+              </p>
               <div v-for="(item, i) in cfg.quickReplies" :key="i" class="qr-item">
                 <div class="qr-hd">
                   <span>第 {{ i + 1 }} 条</span>
@@ -65,13 +68,13 @@
                     删除
                   </el-button>
                 </div>
-                <el-input v-model="item.prompt" placeholder="用户点一下发出去的问题" />
+                <el-input v-model="item.prompt" placeholder="问题标签（用户点一下发出去的内容）" />
                 <el-input
                   v-model="item.reply"
                   type="textarea"
                   resize="none"
                   :rows="3"
-                  placeholder="用户点选后作为聊天消息发送的标签文案；下方可写补充说明"
+                  placeholder="自动回复内容（可选；留空则转人工处理）"
                   style="margin-top: 8px"
                 />
               </div>
@@ -285,9 +288,11 @@ function removeReply(i: number) {
 }
 
 async function saveCfg() {
-  const quickReplies = cfg.quickReplies.filter((q) => q.prompt.trim() && q.reply.trim())
+  const quickReplies = cfg.quickReplies
+    .map((q) => ({ prompt: q.prompt.trim(), reply: q.reply.trim() }))
+    .filter((q) => q.prompt)
   if (!quickReplies.length) {
-    ElMessage.warning('请至少保留一条完整的快捷回复（问题 + 回答）')
+    ElMessage.warning('请至少保留一条「猜你想问」问题标签')
     return
   }
   try {
@@ -335,6 +340,12 @@ async function saveVer() {
 }
 .qr-list {
   width: 100%;
+}
+.qr-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #909399;
 }
 .qr-item {
   margin-bottom: 12px;

@@ -334,23 +334,6 @@ class AuthStore extends ChangeNotifier {
     }
   }
 
-  Future<String?> loginBySms({
-    required String phone,
-    required String code,
-  }) async {
-    final err = _validatePhone(phone);
-    if (err != null) return err;
-    try {
-      final data = await Api.post('/api/app/auth/login-sms', {
-        'phone': phone.trim(),
-        'code': code.trim(),
-      });
-      return _afterAuth(data);
-    } on ApiException catch (e) {
-      return e.message;
-    }
-  }
-
   Future<String?> submitApplication({
     required String phone,
     required String password,

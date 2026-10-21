@@ -17,7 +17,6 @@ class Api {
   Api._();
 
   static const _tokenKey = 'app_token';
-  static const _legacyBaseKey = 'app_api_base';
   /// 线上接口；如需临时改地址用编译参数：--dart-define=API_BASE=...
   static const productionBase = 'https://www.lcnh-platform.cn';
   static String? token;
@@ -35,8 +34,6 @@ class Api {
   static Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     token = prefs.getString(_tokenKey);
-    // 清掉历史上「服务器设置」留下的地址，统一走线上
-    await prefs.remove(_legacyBaseKey);
   }
 
   static Future<void> loadToken() async {

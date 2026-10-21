@@ -34,7 +34,7 @@
       <el-table-column prop="contact" label="联系人" width="90" />
       <el-table-column prop="phone" label="电话" width="140" />
       <el-table-column label="服务地区" min-width="180">
-        <template #default="{ row }">{{ merchantRegionLabel(row) }}</template>
+        <template #default="{ row }">{{ regionLabel(row) }}</template>
       </el-table-column>
       <el-table-column label="门店地址" min-width="160">
         <template #default="{ row }">{{ row.address || '-' }}</template>
@@ -115,7 +115,7 @@ import { includesKw, uniq, usePager } from '@/composables/usePager'
 import {
   BIZ_TYPE_LABEL,
   labelBiz,
-  merchantRegionLabel,
+  regionLabel,
   type BizType,
   type EnableStatus,
   type Merchant,
@@ -156,7 +156,7 @@ const { page, pageSize, filtered, paged } = usePager(() =>
       includesKw(m.contact, k) ||
       includesKw(m.phone, k) ||
       includesKw(m.address, k) ||
-      includesKw(merchantRegionLabel(m), k)
+      includesKw(regionLabel(m), k)
     )
   }),
 )

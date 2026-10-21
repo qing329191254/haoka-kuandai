@@ -102,18 +102,18 @@ async function refresh() {
   await runRefresh(orders.value.length > 0 || listOrders().length > 0, async () => {
     await refreshOrders()
     orders.value = sortOrdersByTime(listOrders())
-    const prefer = uni.getStorageSync('tech_tasks_prefer_tab') as TabKey | 'failed' | ''
-    if (prefer === 'todo' || prefer === 'serving' || prefer === 'done' || prefer === 'returned' || prefer === 'failed') {
-      tab.value = prefer === 'failed' ? 'returned' : prefer
+    const prefer = uni.getStorageSync('tech_tasks_prefer_tab') as TabKey | ''
+    if (prefer === 'todo' || prefer === 'serving' || prefer === 'done' || prefer === 'returned') {
+      tab.value = prefer
       uni.removeStorageSync('tech_tasks_prefer_tab')
     }
   })
 }
 
 onLoad((q) => {
-  const t = (q?.tab as TabKey | 'failed') || ''
-  if (t === 'todo' || t === 'serving' || t === 'done' || t === 'returned' || t === 'failed') {
-    tab.value = t === 'failed' ? 'returned' : t
+  const t = (q?.tab as TabKey) || ''
+  if (t === 'todo' || t === 'serving' || t === 'done' || t === 'returned') {
+    tab.value = t
   }
   const biz = String(q?.biz || '')
   if (biz) bizChip.value = biz

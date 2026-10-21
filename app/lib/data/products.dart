@@ -70,6 +70,4 @@ abstract final class CatalogProducts {
     }
     return null;
   }
-
-  static CatalogProduct? haokaById(String id) => byId(id);
 }

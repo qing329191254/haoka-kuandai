@@ -137,9 +137,6 @@ export function regionLabel(m: { province: string; city: string; district: strin
   return [m.province, m.city, m.district].filter(Boolean).join(' ')
 }
 
-/** @deprecated 使用 regionLabel */
-export const merchantRegionLabel = regionLabel
-
 export interface Technician {
   id: string
   name: string
@@ -213,7 +210,7 @@ export interface FeedbackItem {
   contact: string
   userName: string
   userId?: string
-  channel?: 'service_message' | 'app_feedback'
+  channel?: 'app_feedback'
   createdAt: string
   status: 'pending' | 'handled'
   reply?: string
@@ -235,9 +232,9 @@ export interface ContentDoc {
 }
 
 export interface QuickReply {
-  /** App 快捷入口文案，点选后作为用户消息发送 */
+  /** App「猜你想问」标签；点选后作为用户消息发送 */
   prompt: string
-  /** 后台配置的补充说明（可选） */
+  /** 自动回复内容；留空则只发给人工 */
   reply: string
 }
 
@@ -284,17 +281,6 @@ export function orderBizLabel(o: { bizType: BizType; stockTypeName?: string }) {
 
 export function labelCStatus(status: string) {
   return C_STATUS_LABEL[status as OrderStatus] ?? status
-}
-
-export const BIZ_TYPE_GUIDE: Record<BizType, string> = {
-  haoka: '按地上架号卡套餐，先选品再下单，师傅上门开户激活',
-  contract_phone: '填写姓名、电话、品牌与心理价位，分配给当地商家，师傅上门交付',
-  broadband_naked: '只需地址和联系方式，商家办理装机，不派上门开户',
-  broadband_new_card: '融合宽带新开卡，师傅上门开户后再装机',
-  broadband_no_card: '融合宽带无需新开卡，商家线上开户后装机',
-  wifi: '选择 4G/5G、买断或租赁及上架套餐，再分配当地商家上门交付',
-  cpe: '按地上架 CPE 套餐，提交信息与普通 WIFI 相同，设备类型不同',
-  stock: '先选存量业务类型，再选该类型下按地上架的套餐',
 }
 
 /** 运营后台状态文案 */

@@ -36,7 +36,6 @@ class _FeedbackPageState extends State<FeedbackPage> {
         'type': _type,
         'content': _content.text.trim(),
         'contact': _contact.text.trim(),
-        'channel': 'app_feedback',
       });
     } on ApiException catch (e) {
       if (!mounted) return;

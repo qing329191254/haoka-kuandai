@@ -148,11 +148,19 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
       final item = _ChatMsg.fromJson(
         Map<String, dynamic>.from(data['item'] as Map? ?? {}),
       );
+      _ChatMsg? autoReply;
+      final autoRaw = data['autoReply'];
+      if (autoRaw is Map) {
+        autoReply = _ChatMsg.fromJson(Map<String, dynamic>.from(autoRaw));
+      }
       if (!mounted) return;
       _input.clear();
       setState(() {
         if (!_messages.any((e) => e.id == item.id)) {
           _messages.add(item);
+        }
+        if (autoReply != null && !_messages.any((e) => e.id == autoReply!.id)) {
+          _messages.add(autoReply);
         }
         _sending = false;
       });
@@ -262,13 +270,6 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
           elevation: 0,
           centerTitle: true,
           systemOverlayStyle: SystemUiOverlayStyle.light,
-          actions: [
-            IconButton(
-              tooltip: '拨打热线',
-              onPressed: _callHotline,
-              icon: const Icon(Icons.phone_in_talk_outlined),
-            ),
-          ],
         ),
         body: Column(
           children: [
@@ -316,22 +317,37 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
                     ),
             ),
             if (quick.isNotEmpty)
-              SizedBox(
-                height: 44,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                  itemCount: quick.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 8),
-                  itemBuilder: (context, i) {
-                    final q = quick[i];
-                    return ActionChip(
-                      label: Text(q.prompt, style: const TextStyle(fontSize: 13)),
-                      backgroundColor: Colors.white,
-                      side: const BorderSide(color: Color(0xFFE0E4EA)),
-                      onPressed: _sending ? null : () => _onQuick(q),
-                    );
-                  },
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '猜你想问',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF9AA3B2)),
+                    ),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      height: 36,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: quick.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: 8),
+                        itemBuilder: (context, i) {
+                          final q = quick[i];
+                          return ActionChip(
+                            label: Text(
+                              q.prompt,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            backgroundColor: Colors.white,
+                            side: const BorderSide(color: Color(0xFFE0E4EA)),
+                            onPressed: _sending ? null : () => _onQuick(q),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
             _InputBar(
@@ -408,34 +424,60 @@ class _Banner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      color: const Color(0xFF6C5CE7),
+    final canCall = hotline.trim().isNotEmpty;
+    final child = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         children: [
-          const CircleAvatar(
+          CircleAvatar(
             radius: 18,
             backgroundColor: Colors.white,
-            child: Icon(Icons.support_agent, color: Color(0xFF6C5CE7), size: 20),
+            child: Icon(Icons.support_agent, color: AppStyle.brand, size: 20),
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              workTime.isEmpty
-                  ? '人工客服在线为您服务'
-                  : '人工客服服务时间：$workTime',
-              style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.3),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  workTime.isEmpty
+                      ? '人工客服在线为您服务'
+                      : '服务时间 $workTime',
+                  style: const TextStyle(
+                    color: AppStyle.title,
+                    fontSize: 13,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (canCall) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '点击拨打 $hotline',
+                    style: TextStyle(
+                      color: AppStyle.brand.withValues(alpha: 0.9),
+                      fontSize: 12,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
-          if (hotline.isNotEmpty)
-            IconButton(
-              onPressed: onCall,
-              icon: const Icon(Icons.phone, color: Colors.white, size: 20),
-              visualDensity: VisualDensity.compact,
-            ),
+          if (canCall)
+            Icon(Icons.phone_in_talk_outlined, color: AppStyle.brand, size: 22),
         ],
       ),
+    );
+
+    return Material(
+      color: const Color(0xFFE3F2FD),
+      child: canCall
+          ? InkWell(
+              onTap: onCall,
+              child: child,
+            )
+          : child,
     );
   }
 }

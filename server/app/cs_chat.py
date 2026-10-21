@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.models import AppUser, CsConversation, CsMessage, ServiceConfig
-from app.util import new_id, now_str
+from app.util import load_json, new_id, now_str
 
 # 用户端气泡昵称（不区分具体客服）
 AGENT_DISPLAY_NAME = "派客邦客服"
@@ -175,3 +175,21 @@ def mark_read_for_user(db: Session, conv: CsConversation) -> None:
 def mark_read_for_agent(db: Session, conv: CsConversation) -> None:
     if conv.agent_unread:
         conv.agent_unread = 0
+
+
+def match_quick_reply(db: Session, content: str) -> str:
+    """用户发送文案若完全匹配「快捷问题」标签，返回配置的自动回复。"""
+    text = (content or "").strip()
+    if not text:
+        return ""
+    cfg = db.query(ServiceConfig).first()
+    if not cfg:
+        return ""
+    for item in load_json(cfg.quick_replies) or []:
+        if not isinstance(item, dict):
+            continue
+        prompt = str(item.get("prompt") or "").strip()
+        reply = str(item.get("reply") or "").strip()
+        if prompt and prompt == text and reply:
+            return reply
+    return ""

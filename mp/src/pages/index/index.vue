@@ -88,7 +88,7 @@ onLoad((query) => {
   if (resumeIfLoggedIn()) return
   const roleQuery = query?.role
   if (roleQuery === 'merchant' || roleQuery === 'technician') {
-    // 深链 / 旧入口带 role：直接进登录二级页
+    // 深链带 role：直接进登录二级页
     openLogin(roleQuery, true)
   }
 })
