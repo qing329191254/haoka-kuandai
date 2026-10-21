@@ -12,8 +12,6 @@ class Settings(BaseSettings):
     secret_key: str = "xinglianyun-dev-secret-key-please-change"
     database_url: str = "mysql+pymysql://paikebang:paikebang123@127.0.0.1:3310/paikebang?charset=utf8mb4"
     redis_url: str = "redis://127.0.0.1:6379/0"
-    demo_sms_code: str = "123456"
-    allow_demo_sms: bool = True
     sms_access_key_id: str = ""
     sms_access_key_secret: str = ""
     sms_sign_name: str = "湖北省觅智科技"

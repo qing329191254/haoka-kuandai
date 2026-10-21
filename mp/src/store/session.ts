@@ -33,7 +33,7 @@ function persist(session: MpSession) {
   return session
 }
 
-export async function loginByPhone(phone: string, expectedRole?: Role, code = '123456'): Promise<string | null> {
+export async function loginByPhone(phone: string, expectedRole?: Role, code = ''): Promise<string | null> {
   const p = phone.trim()
   if (!/^1\d{10}$/.test(p)) return '请输入正确的 11 位手机号'
   const role = expectedRole || 'merchant'

@@ -1,8 +1,7 @@
 """Third-party adapters. SMS / pay / e-sign.
 
-短信：配齐阿里云密钥后发送 6 位验证码，5 分钟过期。
+短信：通过阿里云发送 6 位验证码，5 分钟过期。
 优先写入 Redis；连不上时保存在当前进程，重启后失效。
-未配密钥时仍走演示码。ALLOW_DEMO_SMS=true 时，演示码始终可通过校验。
 JWT 本身无状态，登录会话不需要 Redis。
 
 支付环境由 ALIPAY_ENV 控制：mock | sandbox | production（改 .env 后重启）。
@@ -101,8 +100,8 @@ class SmsProvider:
             raise SmsRateLimit()
         _last_sms_at[key] = now
         if not sms_configured():
-            _save_code(key, settings.demo_sms_code)
-            return settings.demo_sms_code
+            _last_sms_at.pop(key, None)
+            raise SmsSendError("短信服务未配置")
         code = str(secrets.randbelow(900000) + 100000)
         try:
             send_code(
@@ -122,8 +121,6 @@ class SmsProvider:
 
     def verify(self, phone: str, code: str) -> bool:
         text = code.strip()
-        if settings.allow_demo_sms and text == settings.demo_sms_code:
-            return True
         key = phone.strip()
         stored = _read_code(key)
         if not stored or stored != text:

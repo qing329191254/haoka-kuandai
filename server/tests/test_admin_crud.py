@@ -19,8 +19,14 @@ os.environ["OSS_BUCKET"] = ""
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.db import engine  # noqa: E402
+from app.integrations import _save_code  # noqa: E402
 from app.main import app  # noqa: E402
 from app.routers_uploads import UPLOAD_DIR  # noqa: E402
+
+
+def _sms(phone: str, code: str = "654321") -> str:
+    _save_code(phone, code)
+    return code
 
 
 class AdminCrudTest(unittest.TestCase):
@@ -163,10 +169,10 @@ class AdminCrudTest(unittest.TestCase):
         self.assertEqual(order["commission"], 80)
 
         m1_login = self.client.post(
-            "/api/mp/auth/login", json={"phone": "13800001001", "code": "123456", "role": "merchant"}
+            "/api/mp/auth/login", json={"phone": "13800001001", "code": _sms("13800001001"), "role": "merchant"}
         )
         m2_login = self.client.post(
-            "/api/mp/auth/login", json={"phone": "13800001002", "code": "123456", "role": "merchant"}
+            "/api/mp/auth/login", json={"phone": "13800001002", "code": _sms("13800001002"), "role": "merchant"}
         )
         self.assertEqual(m1_login.status_code, 200, m1_login.text)
         self.assertEqual(m2_login.status_code, 200, m2_login.text)
@@ -188,7 +194,7 @@ class AdminCrudTest(unittest.TestCase):
 
     def test_authenticated_image_upload_is_persistent(self) -> None:
         login = self.client.post(
-            "/api/mp/auth/login", json={"phone": "13600001111", "code": "123456", "role": "technician"}
+            "/api/mp/auth/login", json={"phone": "13600001111", "code": _sms("13600001111"), "role": "technician"}
         )
         self.assertEqual(login.status_code, 200, login.text)
         headers = {"Authorization": f"Bearer {login.json()['token']}"}
@@ -230,7 +236,7 @@ class AdminCrudTest(unittest.TestCase):
 
     def test_wifi_cannot_complete_remote(self) -> None:
         login = self.client.post(
-            "/api/mp/auth/login", json={"phone": "13800001001", "code": "123456", "role": "merchant"}
+            "/api/mp/auth/login", json={"phone": "13800001001", "code": _sms("13800001001"), "role": "merchant"}
         )
         self.assertEqual(login.status_code, 200, login.text)
         headers = {"Authorization": f"Bearer {login.json()['token']}"}
