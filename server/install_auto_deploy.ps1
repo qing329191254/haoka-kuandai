@@ -21,7 +21,6 @@ $NodeVersion = "v24.22.0"
 $NodeZipName = "node-v24.22.0-win-x64.zip"
 $GitExe = "C:\haoka\git\cmd\git.exe"
 $Repo = "C:\haoka\repo"
-$RepoUrl = "https://github.com/qing329191254/haoka-kuandai.git"
 
 function Find-Git {
     foreach ($candidate in @(
@@ -77,13 +76,30 @@ if (-not (Test-Path $npm) -and -not (Test-Path "C:\Program Files\nodejs\npm.cmd"
 
 $env:GIT_TERMINAL_PROMPT = "0"
 $env:GCM_INTERACTIVE = "Never"
+$RepoUrls = @(
+    "https://ghfast.top/https://github.com/qing329191254/haoka-kuandai.git",
+    "https://gh-proxy.com/https://github.com/qing329191254/haoka-kuandai.git",
+    "https://github.com/qing329191254/haoka-kuandai.git"
+)
 if (-not (Test-Path (Join-Path $Repo ".git"))) {
-    Write-Host "cloning repo"
-    & $git -c "safe.directory=*" clone --branch main --single-branch $RepoUrl $Repo
-    if ($LASTEXITCODE -ne 0) { throw "git clone failed" }
+    if (Test-Path $Repo) { Remove-Item $Repo -Recurse -Force }
+    $cloned = $false
+    foreach ($url in $RepoUrls) {
+        Write-Host "clone $url"
+        & $git -c "safe.directory=*" -c http.version=HTTP/1.1 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 clone --branch main --single-branch $url $Repo
+        if ($LASTEXITCODE -eq 0) { $cloned = $true; break }
+        if (Test-Path $Repo) { Remove-Item $Repo -Recurse -Force }
+    }
+    if (-not $cloned) { throw "git clone failed" }
 } else {
-    & $git -c "safe.directory=*" -C $Repo fetch origin main
-    if ($LASTEXITCODE -ne 0) { throw "git fetch failed" }
+    $fetched = $false
+    foreach ($url in $RepoUrls) {
+        Write-Host "fetch $url"
+        & $git -c "safe.directory=*" -C $Repo remote set-url origin $url
+        & $git -c "safe.directory=*" -c http.version=HTTP/1.1 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 -C $Repo fetch origin main
+        if ($LASTEXITCODE -eq 0) { $fetched = $true; break }
+    }
+    if (-not $fetched) { throw "git fetch failed" }
     & $git -c "safe.directory=*" -C $Repo reset --hard origin/main
     if ($LASTEXITCODE -ne 0) { throw "git reset failed" }
 }

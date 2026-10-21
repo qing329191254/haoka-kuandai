@@ -5,7 +5,11 @@ param([switch]$Force)
 $ErrorActionPreference = "Continue"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$RepoUrl = "https://github.com/qing329191254/haoka-kuandai.git"
+$RepoUrls = @(
+    "https://ghfast.top/https://github.com/qing329191254/haoka-kuandai.git",
+    "https://gh-proxy.com/https://github.com/qing329191254/haoka-kuandai.git",
+    "https://github.com/qing329191254/haoka-kuandai.git"
+)
 $Repo = "C:\haoka\repo"
 $AppRoot = "C:\haoka\server"
 $LogPath = Join-Path $AppRoot "deploy.log"
@@ -40,6 +44,19 @@ function Invoke-Git {
     if ($LASTEXITCODE -ne 0) {
         throw ("git failed: " + ($GitArgs -join " "))
     }
+}
+
+function Update-Origin {
+    foreach ($url in $RepoUrls) {
+        & $script:Git -c "safe.directory=*" -C $Repo remote set-url origin $url
+        & $script:Git -c "safe.directory=*" -c http.version=HTTP/1.1 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 -C $Repo fetch origin main
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "fetched $url"
+            return
+        }
+        Write-Log "fetch failed $url"
+    }
+    throw "git fetch failed"
 }
 
 function Sync-Tree([string]$Source, [string]$Destination) {
@@ -175,16 +192,22 @@ try {
 
     if (-not (Test-Path (Join-Path $Repo ".git"))) {
         New-Item -ItemType Directory -Force -Path (Split-Path $Repo) | Out-Null
-        Write-Log "cloning $RepoUrl"
-        Invoke-Git @("clone", "--branch", "main", "--single-branch", $RepoUrl, $Repo)
+        if (Test-Path $Repo) { Remove-Item $Repo -Recurse -Force }
+        $cloned = $false
+        foreach ($url in $RepoUrls) {
+            Write-Log "cloning $url"
+            & $script:Git -c "safe.directory=*" -c http.version=HTTP/1.1 -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 clone --branch main --single-branch $url $Repo
+            if ($LASTEXITCODE -eq 0) { $cloned = $true; break }
+            if (Test-Path $Repo) { Remove-Item $Repo -Recurse -Force }
+        }
+        if (-not $cloned) { throw "git clone failed" }
     }
 
     Ensure-ApiTask
     $rounds = 0
     while ($rounds -lt 3) {
     $rounds++
-    Write-Log "fetch origin/main"
-    Invoke-Git @("-C", $Repo, "fetch", "origin", "main")
+    Update-Origin
     Invoke-Git @("-C", $Repo, "reset", "--hard", "origin/main")
     $remoteSha = (& $script:Git -c "safe.directory=*" -C $Repo rev-parse "HEAD").Trim()
     if ($LASTEXITCODE -ne 0 -or -not $remoteSha) { throw "cannot read HEAD" }
@@ -272,7 +295,7 @@ try {
         Write-Log ("admin_fail=" + $_.Exception.Message)
     }
 
-    Invoke-Git @("-C", $Repo, "fetch", "origin", "main")
+    Update-Origin
     $latestSha = (& $script:Git -c "safe.directory=*" -C $Repo rev-parse "origin/main").Trim()
     if ($LASTEXITCODE -ne 0 -or -not $latestSha) { throw "cannot read origin/main" }
     if ($latestSha -eq $remoteSha) { break }
