@@ -4,6 +4,8 @@ $ErrorActionPreference = "Continue"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $GitZip = "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.2/MinGit-2.56.0.2-64-bit.zip"
+$NodeVersion = "v24.22.0"
+$NodeZipName = "node-v24.22.0-win-x64.zip"
 $GitExe = "C:\haoka\git\cmd\git.exe"
 $Repo = "C:\haoka\repo"
 $RepoUrl = "https://github.com/qing329191254/haoka-kuandai.git"
@@ -36,6 +38,38 @@ if (-not $git) {
 }
 if (-not (Test-Path $git)) { throw "git install failed" }
 
+$npm = "C:\haoka\node\npm.cmd"
+if (-not (Test-Path $npm) -and -not (Test-Path "C:\Program Files\nodejs\npm.cmd")) {
+    Write-Host "downloading Node.js"
+    $zip = "C:\haoka\$NodeZipName"
+    $urls = @(
+        "https://npmmirror.com/mirrors/node/$NodeVersion/$NodeZipName",
+        "https://nodejs.org/dist/$NodeVersion/$NodeZipName"
+    )
+    $downloaded = $false
+    foreach ($url in $urls) {
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $zip
+            $downloaded = $true
+            break
+        } catch {
+            Write-Host "node download failed: $url"
+        }
+    }
+    if (-not $downloaded) { throw "node download failed" }
+    $unpack = "C:\haoka\node-unpack"
+    if (Test-Path $unpack) { Remove-Item $unpack -Recurse -Force }
+    Expand-Archive -Path $zip -DestinationPath $unpack -Force
+    $inner = Get-ChildItem $unpack -Directory | Select-Object -First 1
+    if (Test-Path "C:\haoka\node") { Remove-Item "C:\haoka\node" -Recurse -Force }
+    Move-Item $inner.FullName "C:\haoka\node"
+    Remove-Item $unpack -Recurse -Force
+    Remove-Item $zip -Force
+}
+if (-not (Test-Path $npm) -and -not (Test-Path "C:\Program Files\nodejs\npm.cmd")) {
+    throw "node install failed"
+}
+
 $env:GIT_TERMINAL_PROMPT = "0"
 $env:GCM_INTERACTIVE = "Never"
 if (-not (Test-Path (Join-Path $Repo ".git"))) {
@@ -49,7 +83,7 @@ if (-not (Test-Path (Join-Path $Repo ".git"))) {
     if ($LASTEXITCODE -ne 0) { throw "git reset failed" }
 }
 
-foreach ($aclPath in @("C:\haoka\git", "C:\haoka\repo")) {
+foreach ($aclPath in @("C:\haoka\git", "C:\haoka\node", "C:\haoka\repo")) {
     if (Test-Path $aclPath) { icacls $aclPath /grant "*S-1-5-18:(OI)(CI)F" /T | Out-Null }
 }
 icacls C:\haoka\server /grant "*S-1-5-18:(OI)(CI)M" /T | Out-Null
@@ -61,7 +95,7 @@ if ($LASTEXITCODE -ne 0) { throw "failed to register HaokaAutoDeploy" }
 
 try {
     $task = Get-ScheduledTask -TaskName HaokaAutoDeploy
-    $task.Settings.ExecutionTimeLimit = "PT20M"
+    $task.Settings.ExecutionTimeLimit = "PT45M"
     $task.Settings.StartWhenAvailable = $true
     Set-ScheduledTask -InputObject $task | Out-Null
 } catch {

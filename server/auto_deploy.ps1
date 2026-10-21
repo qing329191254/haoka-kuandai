@@ -87,8 +87,18 @@ function Restore-App([string]$Backup) {
     Copy-Item $Backup $dest -Recurse -Force
 }
 
+function Find-Npm {
+    foreach ($candidate in @(
+        "C:\haoka\node\npm.cmd",
+        "C:\Program Files\nodejs\npm.cmd"
+    )) {
+        if (Test-Path $candidate) { return $candidate }
+    }
+    return $null
+}
+
 function Update-Admin([string]$RemoteSha) {
-    $npm = "C:\Program Files\nodejs\npm.cmd"
+    $npm = Find-Npm
     if (-not (Test-Path $AdminShaPath)) {
         Set-Content -Path $AdminShaPath -Value $RemoteSha -Encoding ASCII
         Write-Log "keep existing admin_dist until admin source changes"
@@ -107,6 +117,9 @@ function Update-Admin([string]$RemoteSha) {
         return
     }
     Write-Log "building admin"
+    $env:NPM_CONFIG_CACHE = "C:\haoka\npm-cache"
+    $nodeDir = Split-Path $npm -Parent
+    $env:PATH = $nodeDir + ";" + $env:PATH
     Push-Location (Join-Path $Repo "admin")
     try {
         Remove-Item Env:VITE_API_BASE -ErrorAction SilentlyContinue
@@ -134,7 +147,7 @@ if (-not (Test-Path $Python)) {
 
 if (Test-Path $LockPath) {
     $age = (Get-Date) - (Get-Item $LockPath).LastWriteTime
-    if ($age.TotalMinutes -lt 20) { exit 0 }
+    if ($age.TotalMinutes -lt 45) { exit 0 }
 }
 New-Item -ItemType Directory -Force -Path $AppRoot | Out-Null
 Set-Content -Path $LockPath -Value (Get-Date -Format o) -Encoding ASCII
