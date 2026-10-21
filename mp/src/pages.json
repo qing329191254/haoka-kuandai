@@ -8,6 +8,13 @@
       }
     },
     {
+      "path": "pages/guide/index",
+      "style": {
+        "navigationBarTitleText": "使用说明",
+        "navigationBarBackgroundColor": "#D8EAFF"
+      }
+    },
+    {
       "path": "pages/merchant/apply",
       "style": {
         "navigationBarTitleText": "商家入驻申请"

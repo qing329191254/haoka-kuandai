@@ -13,62 +13,36 @@
           <image class="logo" src="/static/splash_logo.png" mode="aspectFit" />
         </view>
         <text class="brand">派客邦</text>
-        <text class="title">本地商家与上门师傅的作业工具</text>
-        <text class="sub">给已入驻商家和所属师傅使用。这一页不用登录，真实订单在登录后查看。</text>
+        <text class="title">本地商家 · 上门师傅</text>
+        <text class="sub">请选择工作身份登录</text>
       </view>
 
-      <text class="section-title">谁可以使用</text>
-      <view class="who surface">
-        <view class="badge">商</view>
-        <view class="who-body">
-          <text class="who-t">商家</text>
-          <text class="who-d">接单、办理、派单，以及管理本店师傅。需先入驻，并通过运营审核。</text>
-        </view>
-      </view>
-      <view class="who surface">
-        <view class="badge tech">师</view>
-        <view class="who-body">
-          <text class="who-t">上门师傅</text>
-          <text class="who-d">查看上门任务，拍照确认交付。无法完成时退回商家。由所属商家添加，不单独注册。</text>
-        </view>
-      </view>
-
-      <text class="section-title">办理怎么走</text>
-      <view class="card surface">
-        <view v-for="(item, i) in steps" :key="item.title" class="step">
-          <view class="step-rail">
-            <text class="step-no">{{ i + 1 }}</text>
-            <view v-if="i < steps.length - 1" class="step-line" />
-          </view>
-          <view class="step-body">
-            <text class="step-t">{{ item.title }}</text>
-            <text class="step-d">{{ item.desc }}</text>
+      <view class="role-card surface" @click="chooseRole('merchant')">
+        <view class="role-left">
+          <view class="badge">商</view>
+          <view class="role-text">
+            <text class="role-title">商家</text>
+            <text class="role-desc">接单、派单、电脑开户、管理师傅</text>
           </view>
         </view>
+        <text class="arrow">›</text>
       </view>
 
-      <text class="section-title">订单示例</text>
-      <text class="section-note">虚构示例，姓名和电话已打码。</text>
-      <view class="sample surface">
-        <view class="sample-top">
-          <text class="biz">融合宽带</text>
-          <text class="pill">示例</text>
+      <view class="role-card surface" @click="chooseRole('technician')">
+        <view class="role-left">
+          <view class="badge tech">师</view>
+          <view class="role-text">
+            <text class="role-title">上门师傅</text>
+            <text class="role-desc">接单上门、手机开户、装机确认</text>
+          </view>
         </view>
-        <text class="sample-name">300M 融合套餐</text>
-        <text class="sample-meta">张* · 138****1206</text>
-        <text class="sample-meta">某市某区示例路 8 号</text>
-        <text class="sample-no">DEMO20261021001</text>
-        <text class="sample-tip">商家登录后可接单。需要上门时，再派给本店师傅。</text>
+        <text class="arrow">›</text>
       </view>
-      <text class="privacy">客户姓名、手机号和地址只对已登录的对应商家或师傅展示。</text>
 
-      <view class="dock">
-        <view class="dock-row">
-          <view class="dock-btn primary" @click="chooseRole('merchant')">商家登录</view>
-          <view class="dock-btn tech" @click="chooseRole('technician')">师傅登录</view>
-        </view>
-        <text class="apply-link" @click="goApply">商家入驻申请</text>
-      </view>
+      <button class="guide-btn" @click="goGuide">使用说明</button>
+
+      <text class="foot">商家需先入驻申请并经运营审核；师傅由所属商家添加</text>
+      <text class="apply-link" @click="goApply">商家入驻申请 ›</text>
     </template>
 
     <view v-else class="wrap login-page">
@@ -131,13 +105,6 @@ import { showToast } from '@/store/feedback'
 import { getSession, goRoleHome, loginByPhone } from '@/store/session'
 import { request } from '@/api/http'
 
-const steps = [
-  { title: '商家提交入驻', desc: '填写门店、服务地区和可接业务，等待运营审核。' },
-  { title: '审核通过后登录', desc: '使用申请手机号登录，处理新录入的订单。' },
-  { title: '办理或派单上门', desc: '能线上办结的直接办结；需要上门的派给本店师傅。' },
-  { title: '师傅上门确认', desc: '师傅拍照交付。无法完成则退回，由商家继续跟进或重新派单。' },
-]
-
 const booting = ref(true)
 const step = ref<'home' | 'login'>('home')
 const role = ref<Role>('merchant')
@@ -199,6 +166,10 @@ function backHome() {
 
 function goApply() {
   uni.navigateTo({ url: '/pages/merchant/apply' })
+}
+
+function goGuide() {
+  uni.navigateTo({ url: '/pages/guide/index' })
 }
 
 async function sendCode() {
@@ -283,22 +254,22 @@ async function onLogin() {
   padding-bottom: 40rpx;
 }
 .brand-block {
-  margin-bottom: 36rpx;
+  margin-bottom: 40rpx;
 }
 .brand-block.compact {
   margin-bottom: 28rpx;
 }
 .logo-wrap {
-  width: 120rpx;
-  height: 120rpx;
-  border-radius: 32rpx;
+  width: 148rpx;
+  height: 148rpx;
+  border-radius: 36rpx;
   background: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 20rpx;
+  margin-bottom: 24rpx;
   box-shadow: 0 16rpx 40rpx rgba(21, 101, 192, 0.22);
-  padding: 16rpx;
+  padding: 20rpx;
   box-sizing: border-box;
 }
 .logo {
@@ -341,209 +312,96 @@ async function onLogin() {
 .title {
   display: block;
   margin-top: 10rpx;
-  font-size: 34rpx;
+  font-size: 36rpx;
   font-weight: 700;
   color: #122033;
-  line-height: 1.35;
 }
 .sub {
   display: block;
   margin-top: 12rpx;
   font-size: 26rpx;
   color: #6b7a90;
-  line-height: 1.5;
+  line-height: 1.45;
 }
-.section-title {
-  display: block;
-  margin: 8rpx 4rpx 16rpx;
-  font-size: 26rpx;
-  font-weight: 700;
-  color: #5a6b80;
-  letter-spacing: 1rpx;
+.role-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 32rpx 28rpx;
+  margin-bottom: 20rpx;
 }
-.section-note {
-  display: block;
-  margin: -6rpx 4rpx 16rpx;
-  font-size: 22rpx;
-  color: #8a96a8;
-}
-.who {
-  position: relative;
-  display: block;
-  padding: 28rpx 28rpx 28rpx 120rpx;
-  margin-bottom: 16rpx;
+.role-left {
+  display: flex;
+  align-items: center;
+  gap: 22rpx;
+  min-width: 0;
+  flex: 1;
 }
 .badge {
-  position: absolute;
-  left: 28rpx;
-  top: 28rpx;
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 20rpx;
+  width: 84rpx;
+  height: 84rpx;
+  border-radius: 22rpx;
   background: linear-gradient(145deg, #42a5f5, #1e88e5);
   color: #fff;
-  font-size: 28rpx;
+  font-size: 32rpx;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 10rpx 22rpx rgba(30, 136, 229, 0.28);
+  box-shadow: 0 12rpx 24rpx rgba(30, 136, 229, 0.3);
 }
 .badge.tech {
   background: linear-gradient(145deg, #26a69a, #00897b);
-  box-shadow: 0 10rpx 22rpx rgba(0, 137, 123, 0.28);
+  box-shadow: 0 12rpx 24rpx rgba(0, 137, 123, 0.3);
 }
-.who-body,
-.step-body {
-  display: block;
-  max-width: 100%;
-  box-sizing: border-box;
+.role-text {
+  flex: 1;
+  min-width: 0;
 }
-.who-t,
-.step-t,
-.sample-name {
+.role-title {
   display: block;
-  font-size: 30rpx;
+  font-size: 32rpx;
   font-weight: 700;
   color: #122033;
 }
-.who-d,
-.step-d,
-.sample-tip,
-.sub,
-.privacy,
-.sample-meta {
-  white-space: normal;
-  word-break: break-word;
-}
-.who-d,
-.step-d,
-.sample-tip {
+.role-desc {
   display: block;
   margin-top: 8rpx;
   font-size: 24rpx;
-  line-height: 1.5;
-  color: #6b7a90;
+  color: #7a8699;
 }
-.card {
-  padding: 28rpx 32rpx 8rpx;
-  margin-bottom: 28rpx;
+.arrow {
+  font-size: 40rpx;
+  color: #b0bccf;
+  font-weight: 300;
+  flex-shrink: 0;
+  margin-left: 12rpx;
 }
-.step {
-  position: relative;
-  display: block;
-  padding-left: 62rpx;
-  box-sizing: border-box;
-}
-.step-rail {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 44rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.step-no {
-  width: 44rpx;
-  height: 44rpx;
-  border-radius: 50%;
-  background: #1e88e5;
-  color: #fff;
-  font-size: 24rpx;
-  font-weight: 700;
-  text-align: center;
-  line-height: 44rpx;
-}
-.step-line {
-  width: 2rpx;
-  flex: 1;
-  min-height: 28rpx;
-  background: #d6e4f5;
-  margin: 6rpx 0;
-}
-.step-body {
-  padding-bottom: 22rpx;
-}
-.sample {
-  padding: 28rpx;
-}
-.sample-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.biz {
-  font-size: 24rpx;
-  font-weight: 700;
-  color: #1e88e5;
-}
-.pill {
-  font-size: 22rpx;
-  color: #1e88e5;
-  background: rgba(30, 136, 229, 0.1);
-  border-radius: 999rpx;
-  padding: 6rpx 16rpx;
-}
-.sample-name {
-  margin-top: 16rpx;
-}
-.sample-meta,
-.sample-no {
-  display: block;
-  margin-top: 8rpx;
-  font-size: 24rpx;
-  color: #6b7a90;
-}
-.sample-no {
-  color: #9aa6b5;
-  font-size: 22rpx;
-}
-.sample-tip {
-  margin-top: 16rpx;
-  padding-top: 16rpx;
-  border-top: 1rpx solid #e8eef5;
-}
-.privacy {
-  display: block;
-  margin-top: 16rpx;
-  font-size: 22rpx;
-  line-height: 1.5;
-  color: #8a96a8;
-}
-.dock {
-  margin-top: 36rpx;
-  padding-bottom: calc(8rpx + env(safe-area-inset-bottom));
-}
-.dock-row {
-  display: flex;
-  gap: 16rpx;
-}
-.dock-btn {
-  flex: 1;
-  width: 0;
-  min-width: 0;
-  height: 88rpx;
-  line-height: 88rpx;
-  text-align: center;
-  font-size: 30rpx;
-  border-radius: 18rpx;
+.guide-btn {
+  margin: 8rpx 0 0;
+  height: 84rpx;
+  line-height: 84rpx;
+  font-size: 28rpx;
   font-weight: 600;
-  color: #fff;
+  color: #1e88e5;
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 18rpx;
 }
-.dock-btn.primary {
-  background: linear-gradient(135deg, #42a5f5, #1e88e5);
-  box-shadow: 0 12rpx 28rpx rgba(30, 136, 229, 0.32);
+.guide-btn::after {
+  border: none;
 }
-.dock-btn.tech {
-  background: linear-gradient(135deg, #26a69a, #00897b);
-  box-shadow: 0 12rpx 28rpx rgba(0, 137, 123, 0.28);
+.foot {
+  display: block;
+  margin-top: 28rpx;
+  text-align: center;
+  font-size: 22rpx;
+  color: #8a96a8;
+  line-height: 1.5;
 }
 .apply-link {
   display: block;
-  margin-top: 14rpx;
+  margin-top: 18rpx;
   text-align: center;
   font-size: 26rpx;
   color: #1e88e5;
