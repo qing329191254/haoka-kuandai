@@ -133,7 +133,7 @@ def _deploy_zh(status_line: str, api_sha: str, admin_sha: str) -> tuple[str, str
     """返回 (code, 中文说明)。code: done / updating / failed / running。"""
     line = (status_line or "").strip()
     low = line.lower()
-    # 失败优先（不要被后续一轮的 venv python 日志盖成「更新中」却长期卡住）
+    # 失败优先
     if any(
         k in low
         for k in (
@@ -147,12 +147,7 @@ def _deploy_zh(status_line: str, api_sha: str, admin_sha: str) -> tuple[str, str
         )
     ):
         return "failed", "更新失败（已回滚或健康检查未通过）"
-    if any(k in low for k in ("api healthy", "api up to date", "admin_dist updated", "no api changes")):
-        if api_sha and admin_sha and api_sha == admin_sha:
-            return "done", "更新完成"
-        if api_sha and admin_sha and api_sha != admin_sha:
-            return "updating", "后端已更新，后台前端还在更新或构建失败"
-        return "done", "更新完成"
+    # 正在真正部署中（不要把每分钟的 fetched 当成更新中）
     if any(
         k in low
         for k in (
@@ -161,14 +156,18 @@ def _deploy_zh(status_line: str, api_sha: str, admin_sha: str) -> tuple[str, str
             "venv python",
             "building admin",
             "cloning",
-            "fetched",
             "newer commit",
             "run again",
         )
     ):
         return "updating", "更新中，请稍候再刷新"
+    # 两端版本一致 = 已对齐最新部署
+    if api_sha and admin_sha and api_sha == admin_sha:
+        return "done", "更新完成"
     if api_sha and admin_sha and api_sha != admin_sha:
         return "updating", "后端已更新，后台前端还在更新或构建失败"
+    if any(k in low for k in ("api healthy", "api up to date", "admin_dist updated", "no api changes")):
+        return "done", "更新完成"
     if api_sha:
         return "running", "服务运行中"
     return "running", "服务运行中"
