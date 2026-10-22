@@ -191,9 +191,13 @@ def health(request: Request, format: str = ""):
         "statusText": text,
     }
 
-    # 默认给浏览器看中文页；监控/部署脚本用 ?format=json（必须保留，否则 auto_deploy 会误判回滚）
-    want_json = format.lower() == "json"
-    if want_json:
+    # 默认 JSON，保证旧版 auto_deploy / 监控脚本不会误判回滚。
+    # 仅浏览器（User-Agent 含 Mozilla）或 ?format=html 才返回中文页。
+    ua = (request.headers.get("user-agent") or "").lower()
+    want_html = format.lower() == "html" or (
+        format.lower() != "json" and "mozilla" in ua
+    )
+    if not want_html:
         return JSONResponse(payload)
 
     color = {
