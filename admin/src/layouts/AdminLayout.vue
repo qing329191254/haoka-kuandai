@@ -61,6 +61,7 @@
           <el-menu-item v-if="can('agents:view')" index="/agents">代理商</el-menu-item>
           <el-menu-item v-if="can('users:view')" index="/users">App 用户</el-menu-item>
           <el-menu-item v-if="can('service:view')" index="/service">客服配置</el-menu-item>
+          <el-menu-item v-if="can('service:view')" index="/app-version">版本更新</el-menu-item>
           <el-menu-item v-if="can('feedback:view')" index="/cs-chat">
             <span class="menu-label">
               在线客服

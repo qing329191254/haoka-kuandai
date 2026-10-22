@@ -27,6 +27,7 @@ const router = createRouter({
         { path: 'stock', name: 'stock', component: () => import('@/views/warehouse/StockIO.vue'), meta: { title: '号卡出入库', permission: 'stock:view' } },
         { path: 'users', name: 'users', component: () => import('@/views/users/AppUserList.vue'), meta: { title: 'App 用户', permission: 'users:view' } },
         { path: 'service', name: 'service', component: () => import('@/views/service/FaqList.vue'), meta: { title: '客服配置', permission: 'service:view' } },
+        { path: 'app-version', name: 'app-version', component: () => import('@/views/service/AppVersion.vue'), meta: { title: '版本更新', permission: 'service:view' } },
         { path: 'cs-chat', name: 'cs-chat', component: () => import('@/views/service/CsChatList.vue'), meta: { title: '在线客服', permission: 'feedback:view' } },
         { path: 'feedback', name: 'feedback', component: () => import('@/views/service/FeedbackList.vue'), meta: { title: '意见反馈', permission: 'feedback:view' } },
         { path: 'content', name: 'content', component: () => import('@/views/content/DocList.vue'), meta: { title: '协议与帮助', permission: 'content:view' } },

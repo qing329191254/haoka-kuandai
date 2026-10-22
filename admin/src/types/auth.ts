@@ -97,8 +97,8 @@ export const PERMISSION_TREE: PermNode[] = [
     children: [
       { id: 'users:view', label: '查看 App 用户' },
       { id: 'users:edit', label: '停用 / 启用用户' },
-      { id: 'service:view', label: '查看客服配置' },
-      { id: 'service:edit', label: '编辑客服配置' },
+      { id: 'service:view', label: '查看客服配置 / 版本更新' },
+      { id: 'service:edit', label: '编辑客服配置 / 版本更新' },
       { id: 'feedback:view', label: '查看在线客服 / 意见反馈' },
       { id: 'feedback:edit', label: '回复在线客服 / 处理意见反馈' },
       { id: 'content:view', label: '查看协议与帮助' },
