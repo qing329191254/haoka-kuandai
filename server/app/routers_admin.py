@@ -613,13 +613,16 @@ async def cs_admin_ws(websocket: WebSocket, token: str = ""):
         perms = json.loads(role.permissions or "[]") if role else []
         if "*" not in perms and "feedback:view" not in perms:
             raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="no permission")
+    finally:
+        db.close()
+
+    try:
         peer = await cs_hub.connect(websocket, role="admin")
         await websocket.send_json({"type": "ready"})
         await ws_receive_loop(peer)
     finally:
         if peer is not None:
             cs_hub.disconnect(peer)
-        db.close()
 
 
 @router.get("/faqs")

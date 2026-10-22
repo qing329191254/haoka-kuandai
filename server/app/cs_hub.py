@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -141,10 +142,19 @@ cs_hub = CsHub()
 
 
 async def ws_receive_loop(peer: CsPeer) -> None:
-    """保持连接；管理端可发 watch / ping。"""
+    """保持连接；管理端可发 watch / ping。坏帧忽略，避免误杀整条连接。"""
     try:
         while True:
-            data = await peer.ws.receive_json()
+            message = await peer.ws.receive()
+            if message.get("type") == "websocket.disconnect":
+                break
+            text = message.get("text")
+            if not text:
+                continue
+            try:
+                data = json.loads(text)
+            except Exception:
+                continue
             if not isinstance(data, dict):
                 continue
             typ = str(data.get("type") or "")
@@ -157,6 +167,6 @@ async def ws_receive_loop(peer: CsPeer) -> None:
     except WebSocketDisconnect:
         pass
     except Exception:
-        logger.debug("cs ws loop ended", exc_info=True)
+        logger.info("cs ws loop ended", exc_info=True)
     finally:
         cs_hub.disconnect(peer)

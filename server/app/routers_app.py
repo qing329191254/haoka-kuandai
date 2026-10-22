@@ -453,16 +453,22 @@ async def cs_app_ws(websocket: WebSocket, token: str = ""):
 
     db = SessionLocal()
     peer = None
+    conv_id = ""
     try:
         user = app_user_of(db, payload)
         conv = get_or_create_conversation(db, user)
         mark_read_for_user(db, conv)
         db.commit()
-        peer = await cs_hub.connect(websocket, role="user", conversation_id=conv.id)
+        conv_id = conv.id
+    finally:
+        db.close()
+
+    try:
+        peer = await cs_hub.connect(websocket, role="user", conversation_id=conv_id)
         await websocket.send_json(
             {
                 "type": "ready",
-                "conversationId": conv.id,
+                "conversationId": conv_id,
                 "agentDisplayName": AGENT_DISPLAY_NAME,
             }
         )
@@ -470,4 +476,3 @@ async def cs_app_ws(websocket: WebSocket, token: str = ""):
     finally:
         if peer is not None:
             cs_hub.disconnect(peer)
-        db.close()

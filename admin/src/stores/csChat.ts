@@ -73,6 +73,7 @@ export const useCsChatStore = defineStore('csChat', () => {
   let pollTimer: ReturnType<typeof setInterval> | null = null
   let alive = false
   let gen = 0
+  let backoffMs = 2000
 
   const unreadTotal = computed(
     () => conversations.value.filter((c) => c.status === 'open' && c.agentUnread > 0).length,
@@ -108,14 +109,40 @@ export const useCsChatStore = defineStore('csChat', () => {
       .filter((x): x is CsConversation => !!x)
   }
 
-  function stopTimers() {
+  function stopPing() {
+    if (pingTimer) {
+      clearInterval(pingTimer)
+      pingTimer = null
+    }
+  }
+
+  function stopReconnectTimer() {
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
     }
-    if (pingTimer) {
-      clearInterval(pingTimer)
-      pingTimer = null
+  }
+
+  function markLive(ws: WebSocket, myGen: number) {
+    if (myGen !== gen || socket !== ws) return
+    backoffMs = 2000
+    wsStatus.value = 'live'
+    stopPing()
+    pingTimer = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({ type: 'ping' }))
+        } catch {
+          /* ignore */
+        }
+      }
+    }, 25000)
+    if (watchedId.value) {
+      try {
+        ws.send(JSON.stringify({ type: 'watch', conversationId: watchedId.value }))
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -123,24 +150,39 @@ export const useCsChatStore = defineStore('csChat', () => {
     if (!alive) return
     wsStatus.value = 'retry'
     if (reconnectTimer) return
+    const wait = backoffMs
+    backoffMs = Math.min(backoffMs * 1.6, 20000)
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null
       connect()
-    }, 2500)
+    }, wait)
+  }
+
+  function detachSocket(ws: WebSocket | null) {
+    if (!ws) return
+    ws.onopen = null
+    ws.onmessage = null
+    ws.onerror = null
+    ws.onclose = null
   }
 
   function connect() {
     if (!alive) return
-    stopTimers()
+    // 已连通或正在连，勿重复建连（避免自杀式重连风暴）
+    if (
+      socket &&
+      (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)
+    ) {
+      return
+    }
+
+    stopReconnectTimer()
+    stopPing()
     const myGen = ++gen
+
+    detachSocket(socket)
     try {
-      if (socket) {
-        socket.onopen = null
-        socket.onmessage = null
-        socket.onerror = null
-        socket.onclose = null
-        socket.close()
-      }
+      socket?.close()
     } catch {
       /* ignore */
     }
@@ -153,29 +195,31 @@ export const useCsChatStore = defineStore('csChat', () => {
     }
 
     wsStatus.value = 'connecting'
-    const ws = new WebSocket(url)
+    let ws: WebSocket
+    try {
+      ws = new WebSocket(url)
+    } catch {
+      scheduleReconnect()
+      return
+    }
     socket = ws
 
     ws.onopen = () => {
-      if (myGen !== gen) return
-      wsStatus.value = 'live'
-      pingTimer = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'ping' }))
-        }
-      }, 25000)
-      if (watchedId.value) {
-        ws.send(JSON.stringify({ type: 'watch', conversationId: watchedId.value }))
-      }
+      markLive(ws, myGen)
     }
 
     ws.onmessage = (ev) => {
-      if (myGen !== gen) return
+      if (myGen !== gen || socket !== ws) return
       try {
         const data = JSON.parse(String(ev.data || '{}')) as {
           type?: string
           item?: Partial<CsMessage> | Partial<CsConversation>
           conversation?: Partial<CsConversation>
+        }
+        // 服务端 ready 也视为已连通（防止个别环境 onopen 异常）
+        if (data.type === 'ready' || data.type === 'pong' || data.type === 'watched') {
+          if (wsStatus.value !== 'live') markLive(ws, myGen)
+          return
         }
         if (data.type === 'message' && data.item) {
           pushLiveMessage(data.item as Partial<CsMessage>)
@@ -184,23 +228,19 @@ export const useCsChatStore = defineStore('csChat', () => {
           upsertConversation(data.item as Partial<CsConversation>)
         }
       } catch {
-        /* ignore */
+        /* ignore malformed frames */
       }
     }
 
+    // 不要在 onerror 里主动 close：部分代理会误触发 error，主动 close 会变成重连风暴
     ws.onerror = () => {
-      if (myGen !== gen) return
-      try {
-        ws.close()
-      } catch {
-        /* ignore */
-      }
+      /* onclose 会跟进 */
     }
 
     ws.onclose = () => {
       if (myGen !== gen) return
-      stopTimers()
-      socket = null
+      stopPing()
+      if (socket === ws) socket = null
       scheduleReconnect()
     }
   }
@@ -213,34 +253,44 @@ export const useCsChatStore = defineStore('csChat', () => {
   }
 
   function start(hasPerm: boolean) {
-    if (!hasPerm || alive) return
+    if (!hasPerm) return
+    if (alive) {
+      // 布局已启动过：仅确保连着
+      if (!socket || socket.readyState === WebSocket.CLOSED) connect()
+      return
+    }
     alive = true
+    backoffMs = 2000
     void reload().catch(() => undefined)
     connect()
-    // WS 异常时兜底，避免角标长期卡住
+    // WS 异常时兜底拉列表，避免角标长期卡住
     pollTimer = setInterval(() => {
       if (!alive) return
       if (wsStatus.value === 'live') return
       void reload().catch(() => undefined)
-    }, 12000)
+      // 卡住在 connecting 过久时再试一次
+      if (
+        wsStatus.value === 'connecting' ||
+        wsStatus.value === 'retry' ||
+        wsStatus.value === 'off'
+      ) {
+        if (!socket || socket.readyState === WebSocket.CLOSED) connect()
+      }
+    }, 15000)
   }
 
   function stop() {
     alive = false
-    stopTimers()
+    stopReconnectTimer()
+    stopPing()
     if (pollTimer) {
       clearInterval(pollTimer)
       pollTimer = null
     }
     gen += 1
+    detachSocket(socket)
     try {
-      if (socket) {
-        socket.onopen = null
-        socket.onmessage = null
-        socket.onerror = null
-        socket.onclose = null
-        socket.close()
-      }
+      socket?.close()
     } catch {
       /* ignore */
     }
