@@ -102,6 +102,15 @@ function Stop-AllUvicorn {
 }
 
 function Restart-Api {
+    # 禁用会用系统 Python 抢 443 的旧任务
+    foreach ($tn in @("HaokaUvicornOnce", "HaokaApi", "HaokaUvicornOld")) {
+        $t = Get-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue
+        if ($t) {
+            Disable-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue | Out-Null
+            schtasks /End /TN $tn 2>&1 | Out-Null
+            Write-Log "disabled leftover task $tn"
+        }
+    }
     Stop-AllUvicorn
     Start-Sleep -Seconds 1
     Start-ScheduledTask -TaskName "HaokaUvicorn"
