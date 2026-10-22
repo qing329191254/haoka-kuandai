@@ -54,9 +54,21 @@ $listen = Get-NetTCPConnection -LocalPort 443 -State Listen -ErrorAction Silentl
 Log ("listen_443_count=" + @($listen).Count + " owners=" + (($listen | Select-Object -ExpandProperty OwningProcess -Unique) -join ","))
 
 $py = Join-Path $AppRoot ".venv\Scripts\python.exe"
+$healthFile = Join-Path $AppRoot "health_check.txt"
 try {
-    $health = & $py -c "import ssl,urllib.request; ctx=ssl._create_unverified_context(); print(urllib.request.urlopen('https://127.0.0.1/health?format=json', context=ctx, timeout=15).read().decode())"
-    Log ("health=" + $health)
+    Remove-Item $healthFile -Force -ErrorAction SilentlyContinue
+    & $py -c @"
+import ssl, urllib.request
+ctx = ssl._create_unverified_context()
+data = urllib.request.urlopen('https://127.0.0.1/health?format=json', context=ctx, timeout=15).read().decode('utf-8', 'replace')
+open(r'$($healthFile.Replace('\','\\'))', 'w', encoding='utf-8').write(data)
+"@
+    if (Test-Path $healthFile) {
+        $health = Get-Content -Path $healthFile -Raw -Encoding UTF8
+        Log ("health=" + $health.Trim())
+    } else {
+        Log "health_fail=no output file"
+    }
 } catch {
     Log ("health_fail=" + $_.Exception.Message)
 }

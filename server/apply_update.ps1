@@ -49,8 +49,12 @@ if (Test-Path C:\haoka\server\uvicorn.err.log) {
     Get-Content C:\haoka\server\uvicorn.err.log -Tail 20 | ForEach-Object { Log $_ }
 }
 try {
-    $health = & $py -c "import ssl,urllib.request; ctx=ssl._create_unverified_context(); print(urllib.request.urlopen('https://127.0.0.1/health?format=json', context=ctx, timeout=10).read().decode())"
-    Log ("health=" + $health)
+    $hf = "C:\haoka\server\health_check.txt"
+    Remove-Item $hf -Force -ErrorAction SilentlyContinue
+    & $py -c "import ssl,urllib.request; ctx=ssl._create_unverified_context(); d=urllib.request.urlopen('https://127.0.0.1/health?format=json', context=ctx, timeout=10).read().decode('utf-8','replace'); open(r'C:\\haoka\\server\\health_check.txt','w',encoding='utf-8').write(d)"
+    $health = Get-Content -Path $hf -Raw -Encoding UTF8
+    Log ("health=" + $health.Trim())
+    if ($health -notmatch '"ok"\s*:\s*true') { throw "health missing ok" }
 } catch {
     Log ("health_fail=" + $_.Exception.Message)
     exit 1

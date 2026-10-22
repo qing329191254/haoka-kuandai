@@ -22,9 +22,11 @@ $Python = Join-Path $AppRoot ".venv\Scripts\python.exe"
 function Write-Log([string]$Message) {
     $line = (Get-Date -Format "yyyy-MM-dd HH:mm:ss") + " " + $Message
     New-Item -ItemType Directory -Force -Path $AppRoot | Out-Null
-    Add-Content -Path $LogPath -Value $line -Encoding UTF8
+    # utf8NoBOM，避免 status 带 BOM 导致 /health JSON 在 GBK 控制台无法打印
+    $utf8 = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::AppendAllText($LogPath, $line + [Environment]::NewLine, $utf8)
     Write-Host $line
-    Set-Content -Path $StatusPath -Value $line -Encoding UTF8
+    [System.IO.File]::WriteAllText($StatusPath, $line, $utf8)
 }
 
 function Find-Git {
@@ -135,12 +137,22 @@ function Restart-Api {
 }
 
 function Wait-Health {
-    # 重启 uvicorn/SSL 有时要半分钟以上；太短会误判失败并回滚，造成 /health「闪新又变旧」
+    # 重启 uvicorn/SSL 有时要半分钟以上；结果写入文件避免 Windows GBK 控制台 print 非 ASCII 失败
+    $outFile = Join-Path $AppRoot "health_check.txt"
     for ($i = 0; $i -lt 30; $i++) {
         Start-Sleep -Seconds 3
         try {
-            $health = & $Python -c "import ssl,urllib.request; ctx=ssl._create_unverified_context(); print(urllib.request.urlopen('https://127.0.0.1/health?format=json', context=ctx, timeout=10).read().decode())"
-            if ($health -match '"ok"\s*:\s*true') { return $health.Trim() }
+            Remove-Item $outFile -Force -ErrorAction SilentlyContinue
+            & $Python -c @"
+import ssl, urllib.request
+ctx = ssl._create_unverified_context()
+data = urllib.request.urlopen('https://127.0.0.1/health?format=json', context=ctx, timeout=10).read().decode('utf-8', 'replace')
+open(r'$($outFile.Replace('\','\\'))', 'w', encoding='utf-8').write(data)
+"@
+            if (Test-Path $outFile) {
+                $health = Get-Content -Path $outFile -Raw -Encoding UTF8
+                if ($health -match '"ok"\s*:\s*true') { return $health.Trim() }
+            }
         } catch {
             continue
         }

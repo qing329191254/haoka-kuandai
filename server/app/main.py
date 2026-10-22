@@ -115,13 +115,18 @@ app.include_router(pay_router)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
-def _read_sha(path: Path) -> str:
+def _read_text_file(path: Path) -> str:
+    """utf-8-sig 去掉 BOM，避免 Windows 控制台 print JSON 时 GBK 报错导致部署误判失败。"""
     try:
         if path.is_file():
-            return path.read_text(encoding="utf-8").strip()[:64]
+            return path.read_text(encoding="utf-8-sig").strip()
     except Exception:
         pass
     return ""
+
+
+def _read_sha(path: Path) -> str:
+    return _read_text_file(path)[:64]
 
 
 def _deploy_zh(status_line: str, api_sha: str, admin_sha: str) -> tuple[str, str]:
@@ -175,12 +180,9 @@ def health(request: Request, format: str = ""):
     api_sha = _read_sha(ROOT / "deployed_api.sha")
     admin_sha = _read_sha(ROOT / "deployed_admin.sha")
     status_line = ""
-    try:
-        sp = ROOT / "deploy_status.txt"
-        if sp.is_file():
-            status_line = sp.read_text(encoding="utf-8").strip().splitlines()[-1][:240]
-    except Exception:
-        pass
+    raw_status = _read_text_file(ROOT / "deploy_status.txt")
+    if raw_status:
+        status_line = raw_status.splitlines()[-1][:240]
     code, text = _deploy_zh(status_line, api_sha, admin_sha)
     short_api = api_sha[:7] if api_sha else "无"
     short_admin = admin_sha[:7] if admin_sha else "无"
