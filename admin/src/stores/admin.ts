@@ -7,7 +7,6 @@ import type { Agent, AgentApplication, DepositRule, StockRecord, StockType, Ware
 import type {
   AppUser,
   ContentDoc,
-  FaqItem,
   FeedbackItem,
   Merchant,
   MerchantApplication,
@@ -34,7 +33,6 @@ export const useAdminStore = defineStore('admin', () => {
   const products = ref<Product[]>([])
   const stockBizTypes = ref<StockBizType[]>([])
   const appUsers = ref<AppUser[]>([])
-  const faqs = ref<FaqItem[]>([])
   const feedbacks = ref<FeedbackItem[]>([])
   const docs = ref<ContentDoc[]>([])
   const serviceConfig = ref<ServiceConfig>({ hotline: '', workTime: '', quickReplies: [] })
@@ -119,7 +117,6 @@ export const useAdminStore = defineStore('admin', () => {
     tasks.push(take('/api/admin/products', (v) => (products.value = v as Product[])))
     tasks.push(take('/api/admin/stock-types', (v) => (stockBizTypes.value = v as StockBizType[])))
     tasks.push(take('/api/admin/users', (v) => (appUsers.value = v as AppUser[])))
-    tasks.push(take('/api/admin/faqs', (v) => (faqs.value = v as FaqItem[])))
     tasks.push(take('/api/admin/feedbacks', (v) => (feedbacks.value = v as FeedbackItem[])))
     tasks.push(take('/api/admin/docs', (v) => (docs.value = v as ContentDoc[])))
     tasks.push(take('/api/admin/agents', (v) => (agents.value = v as Agent[])))
@@ -292,18 +289,6 @@ export const useAdminStore = defineStore('admin', () => {
     }
   }
 
-  async function upsertFaq(row: FaqItem) {
-    const exists = faqs.value.some((f) => f.id === row.id)
-    if (exists) await put(`/api/admin/faqs/${row.id}`, row)
-    else await post('/api/admin/faqs', row)
-    await hydrate()
-  }
-
-  async function removeFaq(id: string) {
-    await del(`/api/admin/faqs/${id}`)
-    await hydrate()
-  }
-
   async function handleFeedback(id: string, body?: { reply?: string; note?: string }) {
     await post(`/api/admin/feedbacks/${id}/handle`, body || {})
     await hydrate()
@@ -416,7 +401,6 @@ export const useAdminStore = defineStore('admin', () => {
     products,
     stockBizTypes,
     appUsers,
-    faqs,
     feedbacks,
     docs,
     serviceConfig,
@@ -444,8 +428,6 @@ export const useAdminStore = defineStore('admin', () => {
     toggleEnable,
     toggleById,
     toggleUser,
-    upsertFaq,
-    removeFaq,
     handleFeedback,
     reopenFeedback,
     saveDoc,

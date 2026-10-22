@@ -194,15 +194,6 @@ export interface AppUser {
   status: EnableStatus
 }
 
-export interface FaqItem {
-  id: string
-  category: '入驻' | '号卡' | '宽带' | '订单' | '账号'
-  question: string
-  answer: string
-  enabled: boolean
-  sort: number
-}
-
 export interface FeedbackItem {
   id: string
   type: '功能建议' | '体验问题' | '订单相关' | '入驻咨询' | '号卡/宽带' | '其他'
