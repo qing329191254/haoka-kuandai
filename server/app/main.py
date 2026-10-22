@@ -3,9 +3,9 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
@@ -124,9 +124,49 @@ def _read_sha(path: Path) -> str:
     return ""
 
 
+def _deploy_zh(status_line: str, api_sha: str, admin_sha: str) -> tuple[str, str]:
+    """返回 (code, 中文说明)。code: done / updating / failed / running。"""
+    line = (status_line or "").strip()
+    low = line.lower()
+    if any(
+        k in low
+        for k in (
+            "health failed",
+            "import failed",
+            "previous code restored",
+            "admin_fail",
+            "pip install failed",
+            "rollback",
+        )
+    ):
+        return "failed", "更新失败（可能已回滚到旧版）"
+    if any(
+        k in low
+        for k in (
+            "deploy api",
+            "pip install",
+            "venv python",
+            "building admin",
+            "cloning",
+            "fetched",
+            "newer commit",
+            "run again",
+            "sync",
+        )
+    ):
+        return "updating", "更新中，请稍候再刷新"
+    if api_sha and admin_sha and api_sha != admin_sha:
+        return "updating", "后端已更新，后台前端还在更新或构建失败"
+    if any(k in low for k in ("api healthy", "api up to date", "admin_dist updated", "no api changes")):
+        return "done", "更新完成"
+    if api_sha:
+        return "running", "服务运行中"
+    return "running", "服务运行中"
+
+
 @app.get("/health")
-def health():
-    """部署自检：浏览器打开 /health，对比 apiSha / adminSha 与 GitHub 最新 commit。"""
+def health(request: Request, format: str = ""):
+    """浏览器打开显示中文状态；加 ?format=json 返回 JSON。"""
     api_sha = _read_sha(ROOT / "deployed_api.sha")
     admin_sha = _read_sha(ROOT / "deployed_admin.sha")
     status_line = ""
@@ -136,16 +176,76 @@ def health():
             status_line = sp.read_text(encoding="utf-8").strip().splitlines()[-1][:240]
     except Exception:
         pass
-    return {
+    code, text = _deploy_zh(status_line, api_sha, admin_sha)
+    short_api = api_sha[:7] if api_sha else "无"
+    short_admin = admin_sha[:7] if admin_sha else "无"
+    payload = {
         "ok": True,
         "name": settings.app_name,
         "admin": (ADMIN_DIST / "index.html").is_file(),
         "alipayEnv": alipay_env(),
-        # 与 GitHub main 最新 commit 对比；不一致=还没部署完或 admin 构建失败
         "apiSha": api_sha,
         "adminSha": admin_sha,
         "deployStatus": status_line,
+        "status": code,
+        "statusText": text,
     }
+
+    # 默认给浏览器看中文页；监控/部署脚本用 ?format=json（必须保留，否则 auto_deploy 会误判回滚）
+    want_json = format.lower() == "json"
+    if want_json:
+        return JSONResponse(payload)
+
+    color = {
+        "done": "#15803d",
+        "updating": "#c2410c",
+        "failed": "#b91c1c",
+        "running": "#1d4ed8",
+    }.get(code, "#334155")
+
+    def esc(s: str) -> str:
+        return (
+            s.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+        )
+
+    log_show = esc((status_line or "暂无")[:80])
+    html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="refresh" content="15" />
+  <title>部署状态</title>
+  <style>
+    body {{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(160deg, #f0f7ff, #eef2ff 50%, #f8fafc); color:#0f172a; }}
+    .card {{ width:min(520px,92vw); background:#fff; border-radius:20px; padding:36px 32px;
+      box-shadow: 0 18px 50px rgba(15,23,42,.08); }}
+    .label {{ font-size:14px; color:#64748b; margin-bottom:8px; }}
+    .status {{ font-size:36px; font-weight:700; color:{color}; line-height:1.25; margin:0 0 20px; }}
+    .row {{ display:flex; justify-content:space-between; gap:12px; padding:10px 0;
+      border-top:1px solid #e2e8f0; font-size:14px; }}
+    .k {{ color:#64748b; flex-shrink:0; }} .v {{ font-family:ui-monospace,Consolas,monospace; text-align:right; word-break:break-all; }}
+    .hint {{ margin-top:18px; font-size:12px; color:#94a3b8; line-height:1.5; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="label">线上部署状态</div>
+    <p class="status">{esc(text)}</p>
+    <div class="row"><span class="k">后端版本</span><span class="v">{esc(short_api)}</span></div>
+    <div class="row"><span class="k">后台前端版本</span><span class="v">{esc(short_admin)}</span></div>
+    <div class="row"><span class="k">支付宝环境</span><span class="v">{esc(str(payload["alipayEnv"]))}</span></div>
+    <div class="row"><span class="k">最近日志</span><span class="v">{log_show}</span></div>
+    <p class="hint">页面每 15 秒自动刷新。看到「更新完成」且两个版本号一致，就是部署成功。</p>
+  </div>
+</body>
+</html>"""
+    return HTMLResponse(html)
 
 
 def _admin_file(full_path: str) -> Path | None:

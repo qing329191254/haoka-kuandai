@@ -23,11 +23,12 @@ class AdminSpaTest(unittest.TestCase):
         cls.client = TestClient(app)
 
     def test_health_reports_admin_flag(self) -> None:
-        res = self.client.get("/health")
+        res = self.client.get("/health?format=json")
         self.assertEqual(res.status_code, 200)
         body = res.json()
         self.assertTrue(body["ok"])
         self.assertEqual(body["admin"], (ADMIN_DIST / "index.html").is_file())
+        self.assertIn("statusText", body)
 
     def test_api_not_stolen_by_spa(self) -> None:
         res = self.client.post("/api/admin/auth/login", json={"username": "admin", "password": "123456"})

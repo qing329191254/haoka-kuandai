@@ -49,7 +49,7 @@ if (Test-Path C:\haoka\server\uvicorn.err.log) {
     Get-Content C:\haoka\server\uvicorn.err.log -Tail 20 | ForEach-Object { Log $_ }
 }
 try {
-    $health = & $py -c "import ssl,urllib.request; ctx=ssl._create_unverified_context(); print(urllib.request.urlopen('https://127.0.0.1/health', context=ctx, timeout=10).read().decode())"
+    $health = & $py -c "import ssl,urllib.request; ctx=ssl._create_unverified_context(); print(urllib.request.urlopen('https://127.0.0.1/health?format=json', context=ctx, timeout=10).read().decode())"
     Log ("health=" + $health)
 } catch {
     Log ("health_fail=" + $_.Exception.Message)

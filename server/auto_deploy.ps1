@@ -93,7 +93,7 @@ function Wait-Health {
     for ($i = 0; $i -lt 30; $i++) {
         Start-Sleep -Seconds 3
         try {
-            $health = & $Python -c "import ssl,urllib.request; ctx=ssl._create_unverified_context(); print(urllib.request.urlopen('https://127.0.0.1/health', context=ctx, timeout=10).read().decode())"
+            $health = & $Python -c "import ssl,urllib.request; ctx=ssl._create_unverified_context(); print(urllib.request.urlopen('https://127.0.0.1/health?format=json', context=ctx, timeout=10).read().decode())"
             if ($health -match '"ok"\s*:\s*true') { return $health.Trim() }
         } catch {
             continue
