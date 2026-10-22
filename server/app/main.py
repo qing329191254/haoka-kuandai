@@ -3,10 +3,11 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.websockets import WebSocketDisconnect
 from sqlalchemy import text
 
 from app.config import ROOT, settings
@@ -270,6 +271,21 @@ def _admin_file(full_path: str) -> Path | None:
     except ValueError:
         raise HTTPException(404)
     return target
+
+
+@app.websocket("/api/ws-echo")
+async def ws_echo(websocket: WebSocket):
+    """本机/线上自检：连上后应立刻收到 hello。若 101 后无下行，就是 WSS 环境问题。"""
+    await websocket.accept()
+    try:
+        await websocket.send_text('{"type":"hello","ok":true}')
+        while True:
+            msg = await websocket.receive_text()
+            await websocket.send_text(msg)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.exception("ws-echo failed")
 
 
 @app.get("/")
