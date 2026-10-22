@@ -54,13 +54,19 @@
           <template #title>
             <el-icon><Iphone /></el-icon>
             <span>App 端</span>
+            <span v-if="csUnread" class="cs-unread-dot" />
           </template>
           <el-menu-item v-if="can('agents:view')" index="/agent-apps">代理入驻申请</el-menu-item>
           <el-menu-item v-if="can('agents:view')" index="/deposit-rules">押金规则</el-menu-item>
           <el-menu-item v-if="can('agents:view')" index="/agents">代理商</el-menu-item>
           <el-menu-item v-if="can('users:view')" index="/users">App 用户</el-menu-item>
           <el-menu-item v-if="can('service:view')" index="/service">客服配置</el-menu-item>
-          <el-menu-item v-if="can('feedback:view')" index="/cs-chat">在线客服</el-menu-item>
+          <el-menu-item v-if="can('feedback:view')" index="/cs-chat">
+            <span class="menu-label">
+              在线客服
+              <span v-if="csUnread" class="cs-unread-num">{{ csUnread > 99 ? '99+' : csUnread }}</span>
+            </span>
+          </el-menu-item>
           <el-menu-item v-if="can('feedback:view')" index="/feedback">意见反馈</el-menu-item>
           <el-menu-item v-if="can('content:view')" index="/content">协议与帮助</el-menu-item>
         </el-sub-menu>
@@ -101,18 +107,27 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 import { usePermission } from '@/composables/usePermission'
 import { useAdminStore } from '@/stores/admin'
+import { useCsChatStore } from '@/stores/csChat'
 
 const route = useRoute()
 const router = useRouter()
 const { can, auth, role, current } = usePermission()
 const admin = useAdminStore()
+const csChat = useCsChatStore()
+const { unreadTotal: csUnread } = storeToRefs(csChat)
 
 onMounted(() => {
   admin.hydrate()
+  if (can('feedback:view')) csChat.start(true)
+})
+
+onUnmounted(() => {
+  csChat.stop()
 })
 
 function canAny(...perms: string[]) {
@@ -224,6 +239,32 @@ function onLogout() {
   }
   :deep(.el-sub-menu .el-menu-item) {
     padding-left: 52px !important;
+  }
+  .menu-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .cs-unread-num {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: #f56c6c;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+  }
+  .cs-unread-dot {
+    width: 8px;
+    height: 8px;
+    margin-left: 8px;
+    border-radius: 50%;
+    background: #f56c6c;
+    box-shadow: 0 0 0 2px rgba(245, 108, 108, 0.25);
   }
 }
 .header {

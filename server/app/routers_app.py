@@ -385,26 +385,7 @@ def cs_session(
     return {
         "conversation": cs_conversation_out(conv),
         "messages": [cs_message_out(m, for_admin=False) for m in msgs],
-        "agentDisplayName": "派客邦客服",
-    }
-
-
-@router.get("/cs/messages")
-def cs_poll_messages(
-    after: str = "",
-    payload: dict = Depends(require_portal("app")),
-    db: Session = Depends(get_db),
-):
-    """兼容旧客户端轮询；新版走 WebSocket。"""
-    user = app_user_of(db, payload)
-    conv = get_or_create_conversation(db, user)
-    msgs = list_messages(db, conv.id, after_id=(after or "").strip(), limit=100)
-    if msgs:
-        mark_read_for_user(db, conv)
-        db.commit()
-    return {
-        "conversationId": conv.id,
-        "items": [cs_message_out(m, for_admin=False) for m in msgs],
+        "agentDisplayName": AGENT_DISPLAY_NAME,
     }
 
 

@@ -519,7 +519,6 @@ def cs_conversations(_: dict = Depends(require_perm("feedback:view")), db: Sessi
 @router.get("/cs/conversations/{cid}")
 def cs_conversation_detail(
     cid: str,
-    after: str = "",
     _: dict = Depends(require_perm("feedback:view")),
     db: Session = Depends(get_db),
 ):
@@ -527,34 +526,12 @@ def cs_conversation_detail(
     if not conv:
         raise HTTPException(404, "会话不存在")
     mark_read_for_agent(db, conv)
-    msgs = list_messages(
-        db,
-        conv.id,
-        after_id=(after or "").strip(),
-        limit=ADMIN_HISTORY_LIMIT,
-    )
+    msgs = list_messages(db, conv.id, limit=ADMIN_HISTORY_LIMIT)
     db.commit()
     return {
         "conversation": cs_conversation_out(conv),
         "messages": [cs_message_out(m, for_admin=True) for m in msgs],
     }
-
-
-@router.get("/cs/conversations/{cid}/messages")
-def cs_conversation_poll(
-    cid: str,
-    after: str = "",
-    _: dict = Depends(require_perm("feedback:view")),
-    db: Session = Depends(get_db),
-):
-    conv = db.get(CsConversation, cid)
-    if not conv:
-        raise HTTPException(404, "会话不存在")
-    msgs = list_messages(db, conv.id, after_id=(after or "").strip(), limit=100)
-    if msgs:
-        mark_read_for_agent(db, conv)
-        db.commit()
-    return {"items": [cs_message_out(m, for_admin=True) for m in msgs]}
 
 
 @router.post("/cs/conversations/{cid}/messages")

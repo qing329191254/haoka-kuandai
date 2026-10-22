@@ -56,6 +56,8 @@ class _ShellPageState extends State<ShellPage> {
         systemNavigationBarDividerColor: Colors.transparent,
       ),
       child: Scaffold(
+        // 与 SoftPageScaffold 顶部同色，避免子页透明时露出主题白底白线
+        backgroundColor: const Color(0xFFD6E9FF),
         body: widget.navigationShell,
         bottomNavigationBar: ColoredBox(
           color: Colors.white,

@@ -5,7 +5,8 @@
         <div class="hd">
           <span>在线客服</span>
           <el-tag v-if="unreadTotal" type="danger" size="small">待回复 {{ unreadTotal }}</el-tag>
-          <el-button link type="primary" @click="reload">刷新</el-button>
+          <el-tag size="small" :type="wsTagType" effect="plain">{{ wsLabel }}</el-tag>
+          <el-button link type="primary" @click="onReload">刷新</el-button>
         </div>
       </template>
       <div class="toolbar">
@@ -95,41 +96,19 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { ElMessage } from 'element-plus'
 import ListPager from '@/components/ListPager.vue'
-import { csWsUrl, get, post } from '@/api/http'
+import { get, post } from '@/api/http'
 import { usePermission } from '@/composables/usePermission'
 import { includesKw, usePager } from '@/composables/usePager'
 import { withLoading } from '@/utils/loading'
-
-export interface CsConversation {
-  id: string
-  userId: string
-  userName: string
-  userPhone: string
-  status: 'open' | 'closed' | string
-  lastMessage: string
-  lastMessageAt: string
-  userUnread: number
-  agentUnread: number
-  createdAt: string
-  updatedAt: string
-}
-
-export interface CsMessage {
-  id: string
-  conversationId: string
-  senderType: 'user' | 'agent' | 'system' | string
-  agentId: string
-  agentName: string
-  displayName: string
-  msgType: 'text' | 'image' | string
-  content: string
-  createdAt: string
-}
+import { type CsConversation, type CsMessage, useCsChatStore } from '@/stores/csChat'
 
 const { can } = usePermission()
-const conversations = ref<CsConversation[]>([])
+const cs = useCsChatStore()
+const { conversations, liveMessages, unreadTotal, wsStatus } = storeToRefs(cs)
+
 const status = ref<string>()
 const keyword = ref('')
 const visible = ref(false)
@@ -138,14 +117,18 @@ const messages = ref<CsMessage[]>([])
 const draft = ref('')
 const sending = ref(false)
 const scrollEl = ref<HTMLElement | null>(null)
-let socket: WebSocket | null = null
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-let pingTimer: ReturnType<typeof setInterval> | null = null
-let wsAlive = true
 
-const unreadTotal = computed(
-  () => conversations.value.filter((c) => c.status === 'open' && c.agentUnread > 0).length,
-)
+const wsLabel = computed(() => {
+  if (wsStatus.value === 'live') return '实时已连接'
+  if (wsStatus.value === 'connecting') return '连接中…'
+  if (wsStatus.value === 'retry') return '重连中…'
+  return '未连接'
+})
+const wsTagType = computed(() => {
+  if (wsStatus.value === 'live') return 'success'
+  if (wsStatus.value === 'connecting' || wsStatus.value === 'retry') return 'warning'
+  return 'info'
+})
 
 const { page, pageSize, filtered, paged } = usePager(() =>
   conversations.value.filter((c) => {
@@ -161,6 +144,22 @@ watch([status, keyword], () => {
   page.value = 1
 })
 
+watch(
+  liveMessages,
+  async (list) => {
+    if (!visible.value || !current.value || !list.length) return
+    let changed = false
+    for (const msg of list) {
+      if (msg.conversationId !== current.value.id) continue
+      if (messages.value.some((m) => m.id === msg.id)) continue
+      messages.value.push(msg)
+      changed = true
+    }
+    if (changed) await scrollBottom()
+  },
+  { deep: true },
+)
+
 const drawerTitle = computed(() => {
   if (!current.value) return '会话'
   const name = current.value.userName || '用户'
@@ -171,99 +170,11 @@ function rowClass({ row }: { row: CsConversation }) {
   return row.agentUnread > 0 ? 'unread-row' : ''
 }
 
-async function reload() {
+async function onReload() {
   try {
-    const res = await get<{ items?: CsConversation[] }>('/api/admin/cs/conversations')
-    conversations.value = res.items || []
+    await cs.reload()
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '加载失败')
-  }
-}
-
-function upsertConversation(item: CsConversation) {
-  const idx = conversations.value.findIndex((c) => c.id === item.id)
-  if (idx >= 0) {
-    conversations.value.splice(idx, 1, item)
-  } else {
-    conversations.value.unshift(item)
-  }
-  conversations.value.sort((a, b) => (b.lastMessageAt || '').localeCompare(a.lastMessageAt || ''))
-}
-
-function connectWs() {
-  if (!wsAlive) return
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer)
-    reconnectTimer = null
-  }
-  if (pingTimer) {
-    clearInterval(pingTimer)
-    pingTimer = null
-  }
-  try {
-    socket?.close()
-  } catch {
-    /* ignore */
-  }
-  const url = csWsUrl()
-  if (!url.includes('token=')) return
-  socket = new WebSocket(url)
-  socket.onopen = () => {
-    pingTimer = setInterval(() => {
-      if (socket?.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'ping' }))
-      }
-    }, 25000)
-    if (current.value?.id) {
-      socket?.send(JSON.stringify({ type: 'watch', conversationId: current.value.id }))
-    }
-  }
-  socket.onmessage = (ev) => {
-    try {
-      const data = JSON.parse(String(ev.data || '{}')) as {
-        type?: string
-        item?: CsMessage | CsConversation
-        conversation?: CsConversation
-      }
-      if (data.type === 'message' && data.item && 'content' in data.item) {
-        const msg = data.item as CsMessage
-        if (current.value && msg.conversationId === current.value.id) {
-          if (!messages.value.some((m) => m.id === msg.id)) {
-            messages.value.push(msg)
-            void scrollBottom()
-          }
-        }
-        if (data.conversation) upsertConversation(data.conversation)
-      } else if (data.type === 'conversation' && data.item && 'userId' in data.item) {
-        upsertConversation(data.item as CsConversation)
-        if (current.value?.id === (data.item as CsConversation).id) {
-          current.value = data.item as CsConversation
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  socket.onclose = () => {
-    if (pingTimer) {
-      clearInterval(pingTimer)
-      pingTimer = null
-    }
-    if (!wsAlive) return
-    reconnectTimer = setTimeout(() => connectWs(), 3000)
-  }
-  socket.onerror = () => {
-    try {
-      socket?.close()
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
-function watchConversation(cid: string) {
-  if (socket?.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: 'watch', conversationId: cid }))
   }
 }
 
@@ -271,6 +182,7 @@ async function openChat(row: CsConversation) {
   current.value = row
   visible.value = true
   draft.value = ''
+  cs.clearLiveMessages()
   try {
     await withLoading(async () => {
       const res = await get<{
@@ -279,9 +191,9 @@ async function openChat(row: CsConversation) {
       }>(`/api/admin/cs/conversations/${row.id}`)
       current.value = res.conversation
       messages.value = res.messages || []
-      upsertConversation(res.conversation)
+      cs.upsertConversation(res.conversation)
     }, '加载中…')
-    watchConversation(row.id)
+    cs.watchConversation(row.id)
     await scrollBottom()
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '打开会话失败')
@@ -321,7 +233,7 @@ async function send() {
       messages.value.push(res.item)
     }
     await scrollBottom()
-    await reload()
+    await cs.reload()
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '发送失败')
   } finally {
@@ -337,7 +249,7 @@ async function closeConv() {
       '提交中…',
     )
     ElMessage.success('会话已结束')
-    await reload()
+    await cs.reload()
     const next = conversations.value.find((c) => c.id === current.value?.id)
     if (next) current.value = next
   } catch (e) {
@@ -348,25 +260,19 @@ async function closeConv() {
 function onDrawerClosed() {
   current.value = null
   messages.value = []
-  watchConversation('')
-  void reload()
+  cs.clearLiveMessages()
+  cs.watchConversation('')
+  void cs.reload().catch(() => undefined)
 }
 
 onMounted(() => {
-  void reload()
-  connectWs()
+  if (can('feedback:view')) cs.start(true)
+  void onReload()
 })
 
 onUnmounted(() => {
-  wsAlive = false
-  if (reconnectTimer) clearTimeout(reconnectTimer)
-  if (pingTimer) clearInterval(pingTimer)
-  try {
-    socket?.close()
-  } catch {
-    /* ignore */
-  }
-  socket = null
+  cs.watchConversation('')
+  cs.clearLiveMessages()
 })
 </script>
 

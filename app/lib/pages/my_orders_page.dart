@@ -124,8 +124,16 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
             title: '我的订单',
             subtitle: _subtitle(store, session, total),
           ),
-          Material(
-            color: Colors.white,
+          // 白底搜索区圆角上沿，避免与渐变硬切出一条发丝白线
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Material(
+              color: Colors.white,
+              elevation: 0,
+              shadowColor: Colors.transparent,
+              surfaceTintColor: Colors.transparent,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              clipBehavior: Clip.antiAlias,
               child: Column(
                 children: [
                   Padding(
@@ -236,6 +244,7 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
                 ],
               ),
             ),
+          ),
             Expanded(
               child: showLoading
                   ? const Center(

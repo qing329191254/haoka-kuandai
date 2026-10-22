@@ -22,7 +22,7 @@ Role = Literal["user", "admin"]
 class CsPeer:
     ws: WebSocket
     role: Role
-    # 用户固定一个会话；管理端可 watch 多个（当前实现一次一个）
+    # 用户固定一个会话；管理端可 watch 当前打开的会话
     conversation_ids: set[str] = field(default_factory=set)
 
 
@@ -58,10 +58,13 @@ class CsHub:
             logger.debug("cs ws send failed, drop peer", exc_info=True)
             self.disconnect(peer)
 
-    async def broadcast_message(self, conv: CsConversation, msg: CsMessage) -> None:
-        cid = conv.id
-        conv_payload = cs_conversation_out(conv)
-        dead: list[CsPeer] = []
+    async def _broadcast_message(
+        self,
+        cid: str,
+        conv_payload: dict[str, Any],
+        msg_admin: dict[str, Any],
+        msg_user: dict[str, Any],
+    ) -> None:
         for peer in list(self._peers):
             try:
                 if peer.role == "user":
@@ -71,18 +74,18 @@ class CsHub:
                         peer,
                         {
                             "type": "message",
-                            "item": cs_message_out(msg, for_admin=False),
+                            "item": msg_user,
                             "conversation": conv_payload,
                         },
                     )
                 else:
-                    # 管理端：在看该会话的推消息；大厅都推会话摘要
+                    # 管理端：大厅一律推会话摘要（角标/列表）；正在看的会话再推消息体
                     if cid in peer.conversation_ids:
                         await self._safe_send(
                             peer,
                             {
                                 "type": "message",
-                                "item": cs_message_out(msg, for_admin=True),
+                                "item": msg_admin,
                                 "conversation": conv_payload,
                             },
                         )
@@ -91,30 +94,45 @@ class CsHub:
                         {"type": "conversation", "item": conv_payload},
                     )
             except Exception:
-                dead.append(peer)
-        for p in dead:
-            self.disconnect(p)
+                self.disconnect(peer)
 
-    async def broadcast_conversation(self, conv: CsConversation) -> None:
-        payload = {"type": "conversation", "item": cs_conversation_out(conv)}
+    async def _broadcast_conversation(self, conv_payload: dict[str, Any]) -> None:
         for peer in list(self._peers):
             if peer.role == "admin":
-                await self._safe_send(peer, payload)
+                await self._safe_send(peer, {"type": "conversation", "item": conv_payload})
 
     def publish_message(self, conv: CsConversation, msg: CsMessage) -> None:
-        """供同步 HTTP 路由调用：投递到主事件循环。"""
+        """供同步 HTTP 路由调用：先序列化再投递，避免 commit 后 ORM 过期。"""
         if not self._loop:
+            logger.warning("cs hub publish_message skipped: loop not bound")
             return
         try:
-            asyncio.run_coroutine_threadsafe(self.broadcast_message(conv, msg), self._loop)
+            cid = conv.id
+            conv_payload = cs_conversation_out(conv)
+            msg_admin = cs_message_out(msg, for_admin=True)
+            msg_user = cs_message_out(msg, for_admin=False)
+        except Exception:
+            logger.exception("cs hub serialize failed")
+            return
+        try:
+            asyncio.run_coroutine_threadsafe(
+                self._broadcast_message(cid, conv_payload, msg_admin, msg_user),
+                self._loop,
+            )
         except Exception:
             logger.exception("cs hub publish_message failed")
 
     def publish_conversation(self, conv: CsConversation) -> None:
         if not self._loop:
+            logger.warning("cs hub publish_conversation skipped: loop not bound")
             return
         try:
-            asyncio.run_coroutine_threadsafe(self.broadcast_conversation(conv), self._loop)
+            payload = cs_conversation_out(conv)
+        except Exception:
+            logger.exception("cs hub serialize conversation failed")
+            return
+        try:
+            asyncio.run_coroutine_threadsafe(self._broadcast_conversation(payload), self._loop)
         except Exception:
             logger.exception("cs hub publish_conversation failed")
 

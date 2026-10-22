@@ -135,21 +135,13 @@ def list_messages(
     db: Session,
     conversation_id: str,
     *,
-    after_id: str = "",
     limit: int = APP_HISTORY_LIMIT,
 ) -> list[CsMessage]:
-    """无 after_id 时取最近 limit 条（时间正序）；有 after_id 时取其后增量。"""
-    q = db.query(CsMessage).filter(CsMessage.conversation_id == conversation_id)
-    if after_id:
-        anchor = db.get(CsMessage, after_id)
-        if anchor and anchor.conversation_id == conversation_id:
-            q = q.filter(
-                (CsMessage.created_at > anchor.created_at)
-                | ((CsMessage.created_at == anchor.created_at) & (CsMessage.id > anchor.id))
-            )
-        return q.order_by(CsMessage.created_at.asc(), CsMessage.id.asc()).limit(limit).all()
+    """取最近 limit 条，按时间正序返回（实时增量走 WebSocket）。"""
     rows = (
-        q.order_by(CsMessage.created_at.desc(), CsMessage.id.desc())
+        db.query(CsMessage)
+        .filter(CsMessage.conversation_id == conversation_id)
+        .order_by(CsMessage.created_at.desc(), CsMessage.id.desc())
         .limit(limit)
         .all()
     )

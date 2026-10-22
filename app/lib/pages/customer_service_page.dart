@@ -21,8 +21,10 @@ class CustomerServicePage extends StatefulWidget {
   State<CustomerServicePage> createState() => _CustomerServicePageState();
 }
 
-class _CustomerServicePageState extends State<CustomerServicePage> {
+class _CustomerServicePageState extends State<CustomerServicePage>
+    with WidgetsBindingObserver {
   final _input = TextEditingController();
+  final _inputFocus = FocusNode();
   final _scroll = ScrollController();
   final _picker = ImagePicker();
 
@@ -33,6 +35,7 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
   bool _sending = false;
   bool _showEmoji = false;
   bool _didInitialScroll = false;
+  double _keyboardBottom = 0;
   WebSocketChannel? _ws;
   StreamSubscription? _wsSub;
   Timer? _wsReconnect;
@@ -40,29 +43,104 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
   bool _wsDisposed = false;
 
   static const _emojis = [
-    '😀', '😁', '😂', '🤣', '😊', '😍', '😘', '😜',
-    '🤔', '😅', '😭', '😡', '👍', '👎', '🙏', '👏',
-    '🎉', '❤️', '🔥', '✅', '❌', '💯', '🤝', '💪',
+    // 表情
+    '😀', '😁', '😂', '🤣', '😃', '😄', '😅', '😆',
+    '😉', '😊', '😋', '😎', '😍', '😘', '🥰', '😗',
+    '😙', '😚', '🙂', '🤗', '🤩', '🤔', '🤨', '😐',
+    '😑', '😶', '🙄', '😏', '😣', '😥', '😮', '🤐',
+    '😯', '😪', '😫', '🥱', '😴', '😌', '😛', '😜',
+    '😝', '🤤', '😒', '😓', '😔', '😕', '🙃', '🤑',
+    '😲', '🙁', '😖', '😞', '😟', '😤', '😢', '😭',
+    '😦', '😧', '😨', '😩', '🤯', '😬', '😰', '😱',
+    '🥵', '🥶', '😳', '🤪', '😵', '😡', '😠', '🤬',
+    '😷', '🤒', '🤕', '🤢', '🤮', '🥴', '😇', '🥳',
+    '🥺', '🤠', '🤡', '🤥', '🤫', '🤭', '🧐', '🤓',
+    '😈', '👿', '💀', '👻', '👽', '🤖', '💩', '😺',
+    '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾',
+    // 手势
+    '👋', '🤚', '🖐', '✋', '🖖', '👌', '🤏', '✌️',
+    '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '👇',
+    '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏',
+    '🙌', '👐', '🤲', '🤝', '🙏', '💪', '🦾', '✍️',
+    '💅', '🤳',
+    // 爱心与符号
+    '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍',
+    '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖',
+    '💘', '💝', '💟', '💯', '💢', '💥', '💫', '💦',
+    '💨', '💬', '💭', '💤', '✅', '❌', '⭐', '🌟',
+    '✨', '⚡', '🔥', '🌈', '☀️', '🌙', '☁️', '❄️',
+    '☔', '🌊',
+    // 动物 / 食物 / 庆祝
+    '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼',
+    '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🦄',
+    '🐔', '🐧', '🐦', '🦆', '🦅', '🦉', '🐝', '🦋',
+    '🐢', '🐍', '🐙', '🐠', '🐬', '🐳', '🌹', '🌸',
+    '🌻', '🍀', '🍎', '🍊', '🍋', '🍌', '🍉', '🍇',
+    '🍓', '🍑', '🍒', '🥝', '🍔', '🍟', '🍕', '🌭',
+    '🍜', '🍣', '🍦', '🍩', '🍪', '🎂', '🍰', '☕',
+    '🍺', '🍻', '🥂', '🍷', '🧃', '🧋', '🎉', '🎊',
+    '🎈', '🎁', '🏆', '🥇', '🎯', '🎮', '🎧', '🎵',
+    '🚀', '✈️', '🏠', '🚗', '📱', '💻', '💡', '🔔',
   ];
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _inputFocus.addListener(_onInputFocusChange);
     _bootstrap();
   }
 
   @override
   void dispose() {
     _wsDisposed = true;
+    WidgetsBinding.instance.removeObserver(this);
+    _inputFocus.removeListener(_onInputFocusChange);
     _wsReconnect?.cancel();
     _wsPing?.cancel();
     _wsSub?.cancel();
     try {
       _ws?.sink.close();
     } catch (_) {}
+    _inputFocus.dispose();
     _input.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    // Scaffold 会吃掉 MediaQuery.viewInsets，用原始 ViewInsets 判断键盘
+    final view = WidgetsBinding.instance.platformDispatcher.views.first;
+    final bottom = view.viewInsets.bottom / view.devicePixelRatio;
+    if (bottom > _keyboardBottom + 40) {
+      _ensureChatVisible();
+    }
+    _keyboardBottom = bottom;
+  }
+
+  void _onInputFocusChange() {
+    if (_inputFocus.hasFocus) {
+      if (_showEmoji) setState(() => _showEmoji = false);
+      _ensureChatVisible();
+    }
+  }
+
+  /// 键盘/表情面板顶起后，把列表滚到最新消息。
+  void _ensureChatVisible() {
+    _scrollToBottom();
+    Future<void>.delayed(const Duration(milliseconds: 120), () {
+      if (mounted) _scrollToBottom();
+    });
+    Future<void>.delayed(const Duration(milliseconds: 320), () {
+      if (mounted) _scrollToBottom();
+    });
+  }
+
+  void _dismissInput() {
+    if (_inputFocus.hasFocus) _inputFocus.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (_showEmoji) setState(() => _showEmoji = false);
   }
 
   Future<void> _bootstrap() async {
@@ -343,40 +421,50 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
           ),
           _Banner(
             hotline: CustomerServiceData.hotline,
-            onCall: _callHotline,
+            onCall: () {
+              _dismissInput();
+              _callHotline();
+            },
           ),
             Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ListView.builder(
-                      controller: _scroll,
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-                      itemCount: _messages.length,
-                      itemBuilder: (context, i) {
-                        final msg = _messages[i];
-                        final prev = i > 0 ? _messages[i - 1] : null;
-                        return Column(
-                          children: [
-                            if (_showTime(msg, prev))
-                              Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 8),
-                                child: Text(
-                                  _formatTime(msg.createdAt),
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF9AA3B2),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _dismissInput,
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView.builder(
+                        controller: _scroll,
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                        itemCount: _messages.length,
+                        itemBuilder: (context, i) {
+                          final msg = _messages[i];
+                          final prev = i > 0 ? _messages[i - 1] : null;
+                          return Column(
+                            children: [
+                              if (_showTime(msg, prev))
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 8),
+                                  child: Text(
+                                    _formatTime(msg.createdAt),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF9AA3B2),
+                                    ),
                                   ),
                                 ),
+                              _Bubble(
+                                msg: msg,
+                                agentName: _agentDisplayName,
+                                user: user,
                               ),
-                            _Bubble(
-                              msg: msg,
-                              agentName: _agentDisplayName,
-                              user: user,
-                            ),
-                          ],
-                        );
-                      },
-                    ),
+                            ],
+                          );
+                        },
+                      ),
+              ),
             ),
             if (quick.isNotEmpty)
               Padding(
@@ -414,9 +502,19 @@ class _CustomerServicePageState extends State<CustomerServicePage> {
               ),
             _InputBar(
               controller: _input,
+              focusNode: _inputFocus,
               sending: _sending,
               showEmoji: _showEmoji,
-              onToggleEmoji: () => setState(() => _showEmoji = !_showEmoji),
+              onToggleEmoji: () {
+                final next = !_showEmoji;
+                setState(() => _showEmoji = next);
+                if (next) {
+                  _inputFocus.unfocus();
+                  _ensureChatVisible();
+                } else {
+                  _inputFocus.requestFocus();
+                }
+              },
               onSend: () => _sendText(_input.text),
               onPickImage: _sendImage,
             ),
@@ -606,35 +704,34 @@ class _Bubble extends StatelessWidget {
             ),
     );
 
-    // 昵称压在气泡正上方；头像与气泡顶对齐（避免气泡相对头像下沉）
-    const avatarSize = 36.0;
-    const gap = 8.0;
-    final nameStyle = const TextStyle(fontSize: 11, color: Color(0xFF9AA3B2));
-
+    // 格行式：头像与昵称顶对齐；气泡在昵称正下方、与昵称左/右对齐
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment:
-            mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment:
+            mine ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
-          Padding(
-            padding: EdgeInsets.only(
-              left: mine ? 0 : avatarSize + gap,
-              right: mine ? avatarSize + gap : 0,
-              bottom: 2,
+          if (!mine) ...[avatar, const SizedBox(width: 8)],
+          Flexible(
+            child: Column(
+              crossAxisAlignment:
+                  mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    height: 1.2,
+                    color: Color(0xFF8A93A3),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                bubble,
+              ],
             ),
-            child: Text(name, style: nameStyle),
           ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment:
-                mine ? MainAxisAlignment.end : MainAxisAlignment.start,
-            children: [
-              if (!mine) ...[avatar, const SizedBox(width: gap)],
-              Flexible(child: bubble),
-              if (mine) ...[const SizedBox(width: gap), avatar],
-            ],
-          ),
+          if (mine) ...[const SizedBox(width: 8), avatar],
         ],
       ),
     );
@@ -644,6 +741,7 @@ class _Bubble extends StatelessWidget {
 class _InputBar extends StatelessWidget {
   const _InputBar({
     required this.controller,
+    required this.focusNode,
     required this.sending,
     required this.showEmoji,
     required this.onToggleEmoji,
@@ -652,6 +750,7 @@ class _InputBar extends StatelessWidget {
   });
 
   final TextEditingController controller;
+  final FocusNode focusNode;
   final bool sending;
   final bool showEmoji;
   final VoidCallback onToggleEmoji;
@@ -680,6 +779,7 @@ class _InputBar extends StatelessWidget {
           Expanded(
             child: TextField(
               controller: controller,
+              focusNode: focusNode,
               minLines: 1,
               maxLines: 4,
               textInputAction: TextInputAction.send,

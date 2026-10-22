@@ -11,11 +11,13 @@ abstract final class AppStyle {
   static const chevron = Color(0xFFC5CAD3);
   static const divider = Color(0xFFEEF0F3);
 
+  /// 顶部一段保持同色蓝，避免标题/副标题之间因渐变过快发白。
+  static const pageTop = Color(0xFFD6E9FF);
   static const pageGradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
-    colors: [Color(0xFFD6E9FF), Color(0xFFEEF5FF), pageBg],
-    stops: [0, 0.55, 1],
+    colors: [pageTop, Color(0xFFDDEEFF), Color(0xFFEAF3FF), pageBg],
+    stops: [0.0, 0.2, 0.5, 1.0],
   );
 
   static List<BoxShadow> get softShadow => [
@@ -115,7 +117,10 @@ class SoftCard extends StatelessWidget {
   }
 }
 
-/// Tab 页统一壳：整页一层渐变背景，避免标题区/内容区两块背景接缝发白线。
+/// Tab 页统一壳：整页一层渐变。
+///
+/// 不用嵌套 Scaffold（外层 [ShellPage] 已有），避免透明 Scaffold 透出主题白底
+/// 在标题/副标题之间形成发丝白线。
 class SoftPageScaffold extends StatelessWidget {
   const SoftPageScaffold({
     super.key,
@@ -136,9 +141,10 @@ class SoftPageScaffold extends StatelessWidget {
             ? Brightness.light
             : Brightness.dark,
       ),
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: DecoratedBox(
+      // 底色用顶部蓝：即便有 1px 接缝/穿透，也不会是白线
+      child: Material(
+        color: AppStyle.pageTop,
+        child: DecoratedBox(
           decoration: const BoxDecoration(gradient: AppStyle.pageGradient),
           child: SizedBox.expand(child: body),
         ),
@@ -163,6 +169,11 @@ class SoftPageHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final top = MediaQuery.paddingOf(context).top;
+    // 收紧行高，避免 title/subtitle 字距空隙被看成白线
+    const heightBehavior = TextHeightBehavior(
+      applyHeightToFirstAscent: false,
+      applyHeightToLastDescent: false,
+    );
     return Padding(
       padding: EdgeInsets.fromLTRB(20, top + 16, 16, 12),
       child: Row(
@@ -174,21 +185,23 @@ class SoftPageHeader extends StatelessWidget {
               children: [
                 Text(
                   title,
+                  textHeightBehavior: heightBehavior,
                   style: const TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w700,
                     color: AppStyle.title,
-                    height: 1.2,
+                    height: 1.15,
                   ),
                 ),
                 if (subtitle != null) ...[
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
                     subtitle!,
+                    textHeightBehavior: heightBehavior,
                     style: const TextStyle(
                       fontSize: 13,
                       color: AppStyle.subtitle,
-                      height: 1.35,
+                      height: 1.25,
                     ),
                   ),
                 ],
