@@ -115,13 +115,36 @@ app.include_router(pay_router)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
+def _read_sha(path: Path) -> str:
+    try:
+        if path.is_file():
+            return path.read_text(encoding="utf-8").strip()[:64]
+    except Exception:
+        pass
+    return ""
+
+
 @app.get("/health")
 def health():
+    """部署自检：浏览器打开 /health，对比 apiSha / adminSha 与 GitHub 最新 commit。"""
+    api_sha = _read_sha(ROOT / "deployed_api.sha")
+    admin_sha = _read_sha(ROOT / "deployed_admin.sha")
+    status_line = ""
+    try:
+        sp = ROOT / "deploy_status.txt"
+        if sp.is_file():
+            status_line = sp.read_text(encoding="utf-8").strip().splitlines()[-1][:240]
+    except Exception:
+        pass
     return {
         "ok": True,
         "name": settings.app_name,
         "admin": (ADMIN_DIST / "index.html").is_file(),
         "alipayEnv": alipay_env(),
+        # 与 GitHub main 最新 commit 对比；不一致=还没部署完或 admin 构建失败
+        "apiSha": api_sha,
+        "adminSha": admin_sha,
+        "deployStatus": status_line,
     }
 
 
