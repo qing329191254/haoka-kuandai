@@ -79,13 +79,41 @@ function Ensure-ApiTask {
     Write-Log "HaokaUvicorn uses $bat"
 }
 
-function Restart-Api {
-    Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match "uvicorn" } | ForEach-Object {
-        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-    }
-    Start-Sleep -Seconds 2
+function Test-PortFree([int]$Port) {
+    $listeners = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+    return -not $listeners
+}
+
+function Stop-AllUvicorn {
+    # 先停计划任务，再杀所有 uvicorn（含误用系统 Python 起的进程）
     schtasks /End /TN HaokaUvicorn 2>&1 | Out-Null
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and ($_.CommandLine -match "uvicorn") } |
+        ForEach-Object {
+            Write-Log ("stop uvicorn pid=" + $_.ProcessId + " cmd=" + $_.CommandLine)
+            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+    # 等 443 真正释放，避免新旧进程抢端口导致 health 失败回滚
+    for ($i = 0; $i -lt 20; $i++) {
+        if (Test-PortFree 443) { return }
+        Start-Sleep -Seconds 1
+    }
+    Write-Log "warn: port 443 still busy after stop"
+}
+
+function Restart-Api {
+    Stop-AllUvicorn
+    Start-Sleep -Seconds 1
     Start-ScheduledTask -TaskName "HaokaUvicorn"
+    Start-Sleep -Seconds 3
+    $procs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and ($_.CommandLine -match "uvicorn") }
+    foreach ($p in @($procs)) {
+        if ($p.CommandLine -notmatch [regex]::Escape((Join-Path $AppRoot ".venv"))) {
+            Write-Log ("killing non-venv uvicorn pid=" + $p.ProcessId)
+            Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 function Wait-Health {
