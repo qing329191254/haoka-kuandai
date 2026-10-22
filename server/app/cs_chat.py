@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+from datetime import datetime, timedelta
+
 from sqlalchemy.orm import Session
 
 from app.models import AppUser, CsConversation, CsMessage, ServiceConfig
 from app.util import load_json, new_id, now_str
+
+logger = logging.getLogger(__name__)
 
 # 用户端气泡昵称（不区分具体客服）
 AGENT_DISPLAY_NAME = "派客邦客服"
@@ -13,6 +18,17 @@ WELCOME_FALLBACK = (
     "您好，欢迎咨询派客邦客服。请直接描述您的问题，我们会尽快回复。"
     "也可先点下方快捷问题。"
 )
+
+# 生命周期：客服可手动结束；静默超时自动结束；历史只保留窗口内数据
+APP_HISTORY_LIMIT = 100
+ADMIN_HISTORY_LIMIT = 100
+IDLE_CLOSE_HOURS = 48
+MESSAGE_RETENTION_DAYS = 90
+LIST_RETENTION_DAYS = 90
+
+
+def _cutoff_str(*, hours: int = 0, days: int = 0) -> str:
+    return (datetime.now() - timedelta(hours=hours, days=days)).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def cs_message_out(m: CsMessage, *, for_admin: bool = False) -> dict:
@@ -120,8 +136,9 @@ def list_messages(
     conversation_id: str,
     *,
     after_id: str = "",
-    limit: int = 100,
+    limit: int = APP_HISTORY_LIMIT,
 ) -> list[CsMessage]:
+    """无 after_id 时取最近 limit 条（时间正序）；有 after_id 时取其后增量。"""
     q = db.query(CsMessage).filter(CsMessage.conversation_id == conversation_id)
     if after_id:
         anchor = db.get(CsMessage, after_id)
@@ -130,7 +147,84 @@ def list_messages(
                 (CsMessage.created_at > anchor.created_at)
                 | ((CsMessage.created_at == anchor.created_at) & (CsMessage.id > anchor.id))
             )
-    return q.order_by(CsMessage.created_at.asc(), CsMessage.id.asc()).limit(limit).all()
+        return q.order_by(CsMessage.created_at.asc(), CsMessage.id.asc()).limit(limit).all()
+    rows = (
+        q.order_by(CsMessage.created_at.desc(), CsMessage.id.desc())
+        .limit(limit)
+        .all()
+    )
+    rows.reverse()
+    return rows
+
+
+def close_idle_conversations(db: Session) -> list[CsConversation]:
+    """open 且双方静默超过 IDLE_CLOSE_HOURS → closed。"""
+    cutoff = _cutoff_str(hours=IDLE_CLOSE_HOURS)
+    now = now_str()
+    rows = (
+        db.query(CsConversation)
+        .filter(CsConversation.status == "open", CsConversation.last_message_at < cutoff)
+        .all()
+    )
+    for conv in rows:
+        conv.status = "closed"
+        conv.updated_at = now
+    if rows:
+        logger.info("cs idle-close: %s conversation(s) before %s", len(rows), cutoff)
+    return rows
+
+
+def purge_old_messages(db: Session) -> int:
+    """删除超过 MESSAGE_RETENTION_DAYS 的消息；并清理无消息的过期已关闭会话。"""
+    msg_cutoff = _cutoff_str(days=MESSAGE_RETENTION_DAYS)
+    deleted = (
+        db.query(CsMessage)
+        .filter(CsMessage.created_at < msg_cutoff)
+        .delete(synchronize_session=False)
+    )
+    # 已关闭且长期无活动、且已无消息的会话一并清掉
+    stale = (
+        db.query(CsConversation)
+        .filter(
+            CsConversation.status == "closed",
+            CsConversation.last_message_at < msg_cutoff,
+        )
+        .all()
+    )
+    removed_conv = 0
+    for conv in stale:
+        left = (
+            db.query(CsMessage)
+            .filter(CsMessage.conversation_id == conv.id)
+            .limit(1)
+            .first()
+        )
+        if left is None:
+            db.delete(conv)
+            removed_conv += 1
+    if deleted or removed_conv:
+        logger.info(
+            "cs purge: messages=%s empty_closed_conversations=%s before %s",
+            deleted,
+            removed_conv,
+            msg_cutoff,
+        )
+    return int(deleted or 0)
+
+
+def list_conversations_for_admin(db: Session, *, limit: int = 200) -> list[CsConversation]:
+    """进行中全部展示；已关闭仅保留 LIST_RETENTION_DAYS 内。"""
+    cutoff = _cutoff_str(days=LIST_RETENTION_DAYS)
+    return (
+        db.query(CsConversation)
+        .filter(
+            (CsConversation.status == "open")
+            | (CsConversation.last_message_at >= cutoff)
+        )
+        .order_by(CsConversation.last_message_at.desc(), CsConversation.updated_at.desc())
+        .limit(limit)
+        .all()
+    )
 
 
 def add_message(

@@ -12,6 +12,7 @@ from app.integrations import SmsRateLimit, esign_provider, pay_provider, sms_pro
 from app.sms_aliyun import SmsSendError
 from app.cs_chat import (
     AGENT_DISPLAY_NAME,
+    APP_HISTORY_LIMIT,
     add_message,
     cs_conversation_out,
     cs_message_out,
@@ -379,7 +380,7 @@ def cs_session(
     user = app_user_of(db, payload)
     conv = get_or_create_conversation(db, user)
     mark_read_for_user(db, conv)
-    msgs = list_messages(db, conv.id, limit=200)
+    msgs = list_messages(db, conv.id, limit=APP_HISTORY_LIMIT)
     db.commit()
     return {
         "conversation": cs_conversation_out(conv),

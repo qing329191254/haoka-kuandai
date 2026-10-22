@@ -606,30 +606,35 @@ class _Bubble extends StatelessWidget {
             ),
     );
 
+    // 昵称压在气泡正上方；头像与气泡顶对齐（避免气泡相对头像下沉）
+    const avatarSize = 36.0;
+    const gap = 8.0;
+    final nameStyle = const TextStyle(fontSize: 11, color: Color(0xFF9AA3B2));
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment:
+            mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          if (!mine) ...[avatar, const SizedBox(width: 8)],
-          Flexible(
-            child: Column(
-              crossAxisAlignment:
-                  mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    name,
-                    style: const TextStyle(fontSize: 11, color: Color(0xFF9AA3B2)),
-                  ),
-                ),
-                bubble,
-              ],
+          Padding(
+            padding: EdgeInsets.only(
+              left: mine ? 0 : avatarSize + gap,
+              right: mine ? avatarSize + gap : 0,
+              bottom: 2,
             ),
+            child: Text(name, style: nameStyle),
           ),
-          if (mine) ...[const SizedBox(width: 8), avatar],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment:
+                mine ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [
+              if (!mine) ...[avatar, const SizedBox(width: gap)],
+              Flexible(child: bubble),
+              if (mine) ...[const SizedBox(width: gap), avatar],
+            ],
+          ),
         ],
       ),
     );

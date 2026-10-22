@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from sqlalchemy import text
 
 from app.config import ROOT, settings
 from app.cs_hub import cs_hub
+from app.cs_jobs import cs_maintenance_loop
 from app.db import Base, SessionLocal, engine
 from app import models  # noqa: F401  register all tables
 from app.routers_admin import router as admin_router
@@ -20,6 +22,8 @@ from app.routers_public import router as public_router
 from app.routers_uploads import UPLOAD_DIR, router as uploads_router
 from app.seed import seed_if_empty
 from app.alipay_client import alipay_env
+
+logger = logging.getLogger(__name__)
 
 ADMIN_DIST = ROOT / "admin_dist"
 _SPA_SKIP = {"api", "uploads", "docs", "redoc", "health"}
@@ -73,7 +77,17 @@ async def lifespan(_app: FastAPI):
         seed_if_empty(db)
     finally:
         db.close()
-    yield
+    maintenance_task = asyncio.create_task(cs_maintenance_loop(), name="cs-maintenance")
+    try:
+        yield
+    finally:
+        maintenance_task.cancel()
+        try:
+            await maintenance_task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.debug("cs maintenance task ended with error", exc_info=True)
 
 
 app = FastAPI(

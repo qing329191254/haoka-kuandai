@@ -7,9 +7,11 @@ from jwt import InvalidTokenError
 from sqlalchemy.orm import Session
 
 from app.cs_chat import (
+    ADMIN_HISTORY_LIMIT,
     add_message,
     cs_conversation_out,
     cs_message_out,
+    list_conversations_for_admin,
     list_messages,
     mark_read_for_agent,
 )
@@ -510,12 +512,7 @@ def reopen_fb(fid: str, _: dict = Depends(require_perm("feedback:edit")), db: Se
 
 @router.get("/cs/conversations")
 def cs_conversations(_: dict = Depends(require_perm("feedback:view")), db: Session = Depends(get_db)):
-    rows = (
-        db.query(CsConversation)
-        .order_by(CsConversation.last_message_at.desc(), CsConversation.updated_at.desc())
-        .limit(200)
-        .all()
-    )
+    rows = list_conversations_for_admin(db, limit=200)
     return {"items": [cs_conversation_out(c) for c in rows], "total": len(rows)}
 
 
@@ -530,7 +527,12 @@ def cs_conversation_detail(
     if not conv:
         raise HTTPException(404, "会话不存在")
     mark_read_for_agent(db, conv)
-    msgs = list_messages(db, conv.id, after_id=(after or "").strip(), limit=200)
+    msgs = list_messages(
+        db,
+        conv.id,
+        after_id=(after or "").strip(),
+        limit=ADMIN_HISTORY_LIMIT,
+    )
     db.commit()
     return {
         "conversation": cs_conversation_out(conv),
