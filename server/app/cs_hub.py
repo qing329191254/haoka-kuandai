@@ -45,7 +45,9 @@ class CsPeer:
 
 class CsHub:
     def __init__(self) -> None:
-        self._peers: set[CsPeer] = set()
+        # 必须用 list：CsPeer 含 WebSocket/Lock，不可哈希，set.add 会直接 TypeError
+        # （表现为 101 成功但永远发不出 ready——根因就在这）
+        self._peers: list[CsPeer] = []
         self._sse_queues: list[asyncio.Queue[dict[str, Any]]] = []
         self._loop: asyncio.AbstractEventLoop | None = None
 
@@ -78,12 +80,12 @@ class CsHub:
         peer = CsPeer(ws=ws, role=role)
         if conversation_id:
             peer.conversation_ids.add(conversation_id)
-        self._peers.add(peer)
-        _dbg(f"accept role={role} client_state={ws.client_state} app_state={ws.application_state}")
+        self._peers.append(peer)
+        _dbg(f"accept role={role} peers={len(self._peers)}")
         return peer
 
     def disconnect(self, peer: CsPeer) -> None:
-        self._peers.discard(peer)
+        self._peers = [p for p in self._peers if p is not peer]
 
     def watch(self, peer: CsPeer, conversation_id: str) -> None:
         peer.conversation_ids = {conversation_id} if conversation_id else set()
