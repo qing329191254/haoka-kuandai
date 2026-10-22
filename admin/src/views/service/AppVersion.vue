@@ -3,33 +3,26 @@
     <template #header>
       <span>App 版本更新</span>
     </template>
-    <el-alert
-      type="info"
-      :closable="false"
-      show-icon
-      title="真实生效：App 启动可强制更新，「我的 → 检查更新」会拉取本页配置。无需对接应用商店 SDK；Android 填 apk 下载地址，iOS 填 App Store / TestFlight 链接（未上架可留空）。"
-      style="margin-bottom: 16px"
-    />
-    <el-form label-width="120px" style="max-width: 720px">
+    <el-form label-width="128px" style="max-width: 640px">
       <el-form-item label="启用检查更新">
         <el-switch v-model="ver.enabled" :disabled="!can('service:edit')" />
       </el-form-item>
       <el-form-item label="最新版本号">
         <el-input v-model="ver.latestVersion" placeholder="如 1.0.1" :disabled="!can('service:edit')" />
+        <div class="hint-block">用户手动「检查更新」时与此比较；不强制拦截</div>
       </el-form-item>
       <el-form-item label="最低可用版本">
         <el-input
           v-model="ver.minSupportedVersion"
-          placeholder="低于此版本将强制更新"
+          placeholder="如 1.0.0"
           :disabled="!can('service:edit')"
         />
-      </el-form-item>
-      <el-form-item label="强制更新">
-        <el-switch v-model="ver.forceUpdate" :disabled="!can('service:edit')" />
-        <span class="hint">开启后，只要本地版本低于最新版本就强制更新</span>
+        <div class="hint-block">
+          低于此版本：启动强制弹窗并跳转应用商店，不更新无法使用（仅严重问题调高）
+        </div>
       </el-form-item>
       <el-form-item label="弹窗标题">
-        <el-input v-model="ver.title" :disabled="!can('service:edit')" />
+        <el-input v-model="ver.title" placeholder="如：版本过低" :disabled="!can('service:edit')" />
       </el-form-item>
       <el-form-item label="更新说明">
         <el-input
@@ -40,18 +33,16 @@
           :disabled="!can('service:edit')"
         />
       </el-form-item>
-      <el-form-item label="Android 下载">
-        <el-input v-model="ver.androidUrl" placeholder="https://.../app.apk" :disabled="!can('service:edit')" />
-      </el-form-item>
-      <el-form-item label="iOS 链接">
+      <el-form-item label="App Store">
         <el-input
           v-model="ver.iosUrl"
-          placeholder="App Store 或 TestFlight 链接"
+          placeholder="上架后填一次 App Store 详情页链接"
           :disabled="!can('service:edit')"
         />
+        <div class="hint-block">Android 按 App 包名自动跳转商店，无需配置</div>
       </el-form-item>
       <el-form-item>
-        <el-button v-if="can('service:edit')" type="primary" @click="saveVer">保存版本配置</el-button>
+        <el-button v-if="can('service:edit')" type="primary" @click="saveVer">保存</el-button>
       </el-form-item>
     </el-form>
   </el-card>
@@ -82,7 +73,11 @@ const ver = reactive<AppVersionConfig>({
 watch(
   () => store.appVersion,
   (value) => {
-    Object.assign(ver, value)
+    Object.assign(ver, {
+      ...value,
+      forceUpdate: false,
+      androidUrl: '',
+    })
   },
   { immediate: true },
 )
@@ -93,19 +88,28 @@ async function saveVer() {
     return
   }
   try {
-    await withLoading(() => store.saveAppVersion({ ...ver }), '保存中…')
+    await withLoading(
+      () =>
+        store.saveAppVersion({
+          ...ver,
+          forceUpdate: false,
+          androidUrl: '',
+        }),
+      '保存中…',
+    )
   } catch (e) {
     ElMessage.warning(e instanceof Error ? e.message : '保存失败')
     return
   }
-  ElMessage.success('版本配置已保存')
+  ElMessage.success('已保存')
 }
 </script>
 
 <style scoped>
-.hint {
-  margin-left: 12px;
+.hint-block {
+  margin-top: 6px;
   color: #909399;
   font-size: 12px;
+  line-height: 1.5;
 }
 </style>

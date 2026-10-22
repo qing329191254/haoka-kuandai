@@ -23,7 +23,6 @@ Role = Literal["user", "admin"]
 class CsPeer:
     ws: WebSocket
     role: Role
-    # 用户固定一个会话；管理端可 watch 当前打开的会话
     conversation_ids: set[str] = field(default_factory=set)
 
 
@@ -80,7 +79,6 @@ class CsHub:
                         },
                     )
                 else:
-                    # 管理端：大厅一律推会话摘要（角标/列表）；正在看的会话再推消息体
                     if cid in peer.conversation_ids:
                         await self._safe_send(
                             peer,
@@ -103,7 +101,6 @@ class CsHub:
                 await self._safe_send(peer, {"type": "conversation", "item": conv_payload})
 
     def publish_message(self, conv: CsConversation, msg: CsMessage) -> None:
-        """供同步 HTTP 路由调用：先序列化再投递，避免 commit 后 ORM 过期。"""
         if not self._loop:
             logger.warning("cs hub publish_message skipped: loop not bound")
             return
@@ -142,12 +139,27 @@ cs_hub = CsHub()
 
 
 async def ws_receive_loop(peer: CsPeer) -> None:
-    """保持连接；管理端可发 watch / ping。坏帧忽略，避免误杀整条连接。"""
+    """保持连接：服务端定时 ping + 接收客户端 ping/watch。"""
+
+    async def _server_ping() -> None:
+        while True:
+            await asyncio.sleep(20)
+            if peer.ws.client_state != WebSocketState.CONNECTED:
+                return
+            try:
+                await peer.ws.send_json({"type": "ping"})
+            except Exception:
+                return
+
+    ping_task = asyncio.create_task(_server_ping())
     try:
         while True:
             message = await peer.ws.receive()
-            if message.get("type") == "websocket.disconnect":
+            mtype = message.get("type")
+            if mtype == "websocket.disconnect":
                 break
+            if mtype != "websocket.receive":
+                continue
             text = message.get("text")
             if not text:
                 continue
@@ -169,4 +181,9 @@ async def ws_receive_loop(peer: CsPeer) -> None:
     except Exception:
         logger.info("cs ws loop ended", exc_info=True)
     finally:
+        ping_task.cancel()
+        try:
+            await ping_task
+        except Exception:
+            pass
         cs_hub.disconnect(peer)

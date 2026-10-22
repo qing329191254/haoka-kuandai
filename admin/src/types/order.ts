@@ -247,10 +247,13 @@ export interface ServiceConfig {
 export interface AppVersionConfig {
   latestVersion: string
   minSupportedVersion: string
+  /** @deprecated 强制仅看 minSupportedVersion */
   forceUpdate: boolean
   title: string
   releaseNotes: string
+  /** @deprecated Android 按包名跳商店，不再使用 */
   androidUrl: string
+  /** iOS App Store 详情页，上架后填一次 */
   iosUrl: string
   enabled: boolean
 }

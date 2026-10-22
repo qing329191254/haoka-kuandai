@@ -266,7 +266,7 @@ function onDrawerClosed() {
 }
 
 onMounted(() => {
-  if (can('feedback:view')) cs.start(true)
+  // WS 由 AdminLayout 常驻启动，这里只刷新列表
   void onReload()
 })
 

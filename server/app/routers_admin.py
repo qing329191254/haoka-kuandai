@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketException, status
+from starlette.websockets import WebSocketDisconnect
 from jwt import InvalidTokenError
 from sqlalchemy.orm import Session
 
@@ -620,6 +621,11 @@ async def cs_admin_ws(websocket: WebSocket, token: str = ""):
         peer = await cs_hub.connect(websocket, role="admin")
         await websocket.send_json({"type": "ready"})
         await ws_receive_loop(peer)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        # 避免未捕获异常把连接打成异常关闭，触发浏览器疯狂重连
+        pass
     finally:
         if peer is not None:
             cs_hub.disconnect(peer)
@@ -680,10 +686,11 @@ def put_app_version(body: dict, _: dict = Depends(require_perm("service:edit")),
     v.min_supported_version = (
         body.get("minSupportedVersion") or body.get("min_supported_version") or v.min_supported_version or "1.0.0"
     ).strip()
-    v.force_update = bool(body.get("forceUpdate", body.get("force_update", v.force_update)))
+    # 强制仅由最低可用版本控制；废弃外链 apk / forceUpdate 开关
+    v.force_update = False
+    v.android_url = ""
     v.title = (body.get("title") or v.title or "发现新版本").strip()
     v.release_notes = body.get("releaseNotes") or body.get("release_notes") or v.release_notes or ""
-    v.android_url = (body.get("androidUrl") or body.get("android_url") or v.android_url or "").strip()
     v.ios_url = (body.get("iosUrl") or body.get("ios_url") or v.ios_url or "").strip()
     v.enabled = bool(body.get("enabled", v.enabled if v.enabled is not None else True))
     db.merge(v)

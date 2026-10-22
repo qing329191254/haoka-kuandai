@@ -11,48 +11,40 @@ class AppVersionInfo {
   const AppVersionInfo({
     required this.latestVersion,
     required this.minSupportedVersion,
-    required this.forceUpdate,
     required this.title,
     required this.releaseNotes,
-    required this.androidUrl,
-    required this.iosUrl,
+    required this.iosStoreUrl,
     required this.enabled,
   });
 
   final String latestVersion;
   final String minSupportedVersion;
-  final bool forceUpdate;
   final String title;
   final String releaseNotes;
-  final String androidUrl;
-  final String iosUrl;
+  /// App Store 详情页（上架后填一次即可）
+  final String iosStoreUrl;
   final bool enabled;
 
   factory AppVersionInfo.fromJson(Map<String, dynamic> json) {
     return AppVersionInfo(
       latestVersion: '${json['latestVersion'] ?? '1.0.0'}'.trim(),
       minSupportedVersion: '${json['minSupportedVersion'] ?? '1.0.0'}'.trim(),
-      forceUpdate: json['forceUpdate'] == true,
       title: '${json['title'] ?? '发现新版本'}'.trim(),
       releaseNotes: '${json['releaseNotes'] ?? ''}'.trim(),
-      androidUrl: '${json['androidUrl'] ?? ''}'.trim(),
-      iosUrl: '${json['iosUrl'] ?? ''}'.trim(),
+      iosStoreUrl: '${json['iosUrl'] ?? json['iosStoreUrl'] ?? ''}'.trim(),
       enabled: json['enabled'] != false,
     );
   }
-
-  String get updateUrl {
-    if (Platform.isIOS) return iosUrl;
-    return androidUrl;
-  }
 }
 
+/// 仅商店更新：强制时弹窗拦路并跳转商店；非强制由用户手动「检查更新」。
 abstract final class AppUpdate {
   static PackageInfo? _info;
   static AppVersionInfo? _remote;
 
   static String get version => _info?.version ?? '—';
   static String get buildNumber => _info?.buildNumber ?? '';
+  static String get packageName => _info?.packageName ?? '';
   static String get versionLabel {
     final v = version;
     if (v == '—') return v;
@@ -102,32 +94,54 @@ abstract final class AppUpdate {
     return compareVersion(local, remote.latestVersion) < 0;
   }
 
+  /// 仅当本地低于「最低可用版本」时强制（严重问题调高该版本号）。
   static bool mustForce(AppVersionInfo remote, String local) {
     if (!remote.enabled) return false;
-    if (compareVersion(local, remote.minSupportedVersion) < 0) return true;
-    return remote.forceUpdate && needUpdate(remote, local);
+    return compareVersion(local, remote.minSupportedVersion) < 0;
   }
 
-  static Future<void> openUpdateUrl(BuildContext context, AppVersionInfo remote) async {
-    final url = remote.updateUrl;
-    if (url.isEmpty) {
-      AppToast.tip(
-        context,
-        Platform.isIOS ? 'iOS 更新链接暂未配置，请联系运营获取新版' : '下载地址暂未配置，请联系运营获取安装包',
-      );
-      return;
-    }
-    final uri = Uri.tryParse(url);
-    if (uri == null) {
-      AppToast.tip(context, '更新链接无效');
-      return;
-    }
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+  /// 跳转应用商店（Android 按包名；iOS 用后台配置的 App Store 链接）。
+  static Future<void> openStore(BuildContext context, AppVersionInfo remote) async {
+    await ensureLocal();
     if (!context.mounted) return;
-    if (!ok) AppToast.tip(context, '无法打开更新链接');
+
+    if (Platform.isIOS) {
+      final raw = remote.iosStoreUrl;
+      if (raw.isEmpty) {
+        AppToast.tip(context, 'App Store 链接暂未配置');
+        return;
+      }
+      final uri = Uri.tryParse(raw);
+      if (uri == null) {
+        AppToast.tip(context, '商店链接无效');
+        return;
+      }
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!context.mounted) return;
+      if (!ok) AppToast.tip(context, '无法打开应用商店，请稍后重试');
+      return;
+    }
+
+    final id = packageName;
+    if (id.isEmpty) {
+      AppToast.tip(context, '无法获取应用包名');
+      return;
+    }
+    // 优先唤起本机应用商店；失败再试 Play 网页
+    final market = Uri.parse('market://details?id=$id');
+    if (await canLaunchUrl(market)) {
+      final ok = await launchUrl(market, mode: LaunchMode.externalApplication);
+      if (!context.mounted) return;
+      if (!ok) AppToast.tip(context, '无法打开应用商店');
+      return;
+    }
+    final play = Uri.parse('https://play.google.com/store/apps/details?id=$id');
+    final ok = await launchUrl(play, mode: LaunchMode.externalApplication);
+    if (!context.mounted) return;
+    if (!ok) AppToast.tip(context, '无法打开应用商店，请稍后重试');
   }
 
-  /// 手动检查：返回是否已处理弹窗。
+  /// 手动检查：有新版本可跳转商店；非强制可取消。
   static Future<void> checkManual(BuildContext context) async {
     await ensureLocal();
     final remote = await fetchRemote();
@@ -187,30 +201,37 @@ abstract final class AppUpdate {
     required String localVersion,
     required bool force,
   }) {
+    final title = remote.title.isEmpty
+        ? (force ? '版本过低' : '发现新版本')
+        : remote.title;
+    final body = force
+        ? '您当前使用的版本过低，请更新至最新版本后再使用。'
+        : (remote.releaseNotes.isNotEmpty
+            ? remote.releaseNotes
+            : '检测到新版本 ${remote.latestVersion}，建议前往应用商店更新。');
+
     return showDialog<void>(
       context: context,
       barrierDismissible: !force,
       builder: (ctx) => PopScope(
         canPop: !force,
         child: AlertDialog(
-          title: Text(remote.title.isEmpty ? '发现新版本' : remote.title),
+          title: Text(title),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(body, style: const TextStyle(height: 1.45)),
+              const SizedBox(height: 10),
               Text(
                 '当前 $localVersion  →  最新 ${remote.latestVersion}',
                 style: const TextStyle(fontSize: 13, color: AppStyle.subtitle),
               ),
-              if (remote.releaseNotes.isNotEmpty) ...[
+              if (force && remote.releaseNotes.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                Text(remote.releaseNotes, style: const TextStyle(height: 1.45)),
-              ],
-              if (force) ...[
-                const SizedBox(height: 10),
-                const Text(
-                  '当前版本过旧，请更新后再使用。',
-                  style: TextStyle(color: Color(0xFFC62828), fontSize: 13),
+                Text(
+                  remote.releaseNotes,
+                  style: const TextStyle(height: 1.45, fontSize: 13),
                 ),
               ],
             ],
@@ -219,11 +240,11 @@ abstract final class AppUpdate {
             if (!force)
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('稍后再说'),
+                child: const Text('取消'),
               ),
             FilledButton(
               onPressed: () async {
-                await openUpdateUrl(ctx, remote);
+                await openStore(ctx, remote);
                 if (force) return;
                 if (ctx.mounted) Navigator.pop(ctx);
               },

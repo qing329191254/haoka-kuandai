@@ -275,15 +275,18 @@ class ServiceConfig(Base):
 
 
 class AppVersionConfig(Base):
-    """App 检查更新配置（不对接应用商店 SDK，仅下发版本与下载/商店链接）。"""
+    """App 版本策略：商店更新；低于最低可用版本则强制跳转商店。"""
     __tablename__ = "app_version_config"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     latest_version: Mapped[str] = mapped_column(String(32), default="1.0.0")
     min_supported_version: Mapped[str] = mapped_column(String(32), default="1.0.0")
+    # 历史字段，已废弃（强制仅看 min_supported_version）
     force_update: Mapped[bool] = mapped_column(Boolean, default=False)
     title: Mapped[str] = mapped_column(String(80), default="发现新版本")
     release_notes: Mapped[str] = mapped_column(Text, default="")
+    # 历史字段，已废弃（Android 按包名跳商店）
     android_url: Mapped[str] = mapped_column(String(500), default="")
+    # iOS App Store 详情页（上架后填一次）
     ios_url: Mapped[str] = mapped_column(String(500), default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 

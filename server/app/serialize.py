@@ -284,10 +284,10 @@ def app_version_out(v: AppVersionConfig) -> dict:
     return {
         "latestVersion": v.latest_version or "1.0.0",
         "minSupportedVersion": v.min_supported_version or "1.0.0",
-        "forceUpdate": bool(v.force_update),
+        "forceUpdate": False,
         "title": v.title or "发现新版本",
         "releaseNotes": v.release_notes or "",
-        "androidUrl": v.android_url or "",
+        "androidUrl": "",
         "iosUrl": v.ios_url or "",
         "enabled": bool(v.enabled),
     }
