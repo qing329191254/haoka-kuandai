@@ -45,35 +45,12 @@ class CsPeer:
 
 class CsHub:
     def __init__(self) -> None:
-        # 必须用 list：CsPeer 含 WebSocket/Lock，不可哈希，set.add 会直接 TypeError
-        # （表现为 101 成功但永远发不出 ready——根因就在这）
+        # 必须用 list：CsPeer 含 WebSocket/Lock，不可哈希，set.add 会 TypeError
         self._peers: list[CsPeer] = []
-        self._sse_queues: list[asyncio.Queue[dict[str, Any]]] = []
         self._loop: asyncio.AbstractEventLoop | None = None
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
-
-    def subscribe_sse(self) -> asyncio.Queue[dict[str, Any]]:
-        q: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=200)
-        self._sse_queues.append(q)
-        return q
-
-    def unsubscribe_sse(self, q: asyncio.Queue[dict[str, Any]]) -> None:
-        try:
-            self._sse_queues.remove(q)
-        except ValueError:
-            pass
-
-    def _fanout_sse(self, payload: dict[str, Any]) -> None:
-        dead: list[asyncio.Queue[dict[str, Any]]] = []
-        for q in self._sse_queues:
-            try:
-                q.put_nowait(payload)
-            except asyncio.QueueFull:
-                dead.append(q)
-        for q in dead:
-            self.unsubscribe_sse(q)
 
     async def connect(self, ws: WebSocket, *, role: Role, conversation_id: str = "") -> CsPeer:
         await ws.accept()
@@ -112,11 +89,6 @@ class CsHub:
         msg_admin: dict[str, Any],
         msg_user: dict[str, Any],
     ) -> None:
-        # 管理端 SSE（HTTPS 长连接，避开现网 WSS 下行丢帧）
-        self._fanout_sse(
-            {"type": "message", "item": msg_admin, "conversation": conv_payload},
-        )
-        self._fanout_sse({"type": "conversation", "item": conv_payload})
         for peer in list(self._peers):
             try:
                 if peer.role == "user":
@@ -148,7 +120,6 @@ class CsHub:
                 self.disconnect(peer)
 
     async def _broadcast_conversation(self, conv_payload: dict[str, Any]) -> None:
-        self._fanout_sse({"type": "conversation", "item": conv_payload})
         for peer in list(self._peers):
             if peer.role == "admin":
                 await self._safe_send(peer, {"type": "conversation", "item": conv_payload})

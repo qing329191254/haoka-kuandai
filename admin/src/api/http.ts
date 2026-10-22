@@ -39,17 +39,19 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
 }
 
-/** 客服实时通道：管理端用 SSE（HTTPS），避开现网 WSS 下行丢帧 */
-export function csEventsUrl() {
+/** 客服 WebSocket 地址（同源或 VITE_API_BASE） */
+export function csWsUrl() {
   const token = encodeURIComponent(getToken())
   const base = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '')
   if (base) {
     const u = new URL(base)
-    u.pathname = '/api/admin/cs/events'
+    u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
+    u.pathname = '/api/admin/cs/ws'
     u.search = `token=${token}`
     return u.toString()
   }
-  return `${location.origin}/api/admin/cs/events?token=${token}`
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${proto}//${location.host}/api/admin/cs/ws?token=${token}`
 }
 
 export async function get<T>(url: string, params?: object) {

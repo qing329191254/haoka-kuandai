@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { csEventsUrl, get } from '@/api/http'
+import { csWsUrl, get } from '@/api/http'
 
 export interface CsConversation {
   id: string
@@ -60,19 +60,21 @@ function asMessage(raw: Partial<CsMessage> | null | undefined): CsMessage | null
   }
 }
 
-/** 后台客服实时：SSE（HTTPS），不再依赖现网异常的 WSS 下行。 */
+/** 后台客服实时：WebSocket（须收到服务端 ready 才算连通）。 */
 export const useCsChatStore = defineStore('csChat', () => {
   const conversations = ref<CsConversation[]>([])
   const liveMessages = ref<CsMessage[]>([])
   const watchedId = ref('')
   const wsStatus = ref<'off' | 'connecting' | 'live' | 'retry'>('off')
 
-  let source: EventSource | null = null
+  let socket: WebSocket | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  let stuckTimer: ReturnType<typeof setTimeout> | null = null
+  let pingTimer: ReturnType<typeof setInterval> | null = null
   let pollTimer: ReturnType<typeof setInterval> | null = null
   let alive = false
   let gen = 0
-  let backoffMs = 2000
+  let backoffMs = 4000
 
   const unreadTotal = computed(
     () => conversations.value.filter((c) => c.status === 'open' && c.agentUnread > 0).length,
@@ -108,6 +110,20 @@ export const useCsChatStore = defineStore('csChat', () => {
       .filter((x): x is CsConversation => !!x)
   }
 
+  function stopPing() {
+    if (pingTimer) {
+      clearInterval(pingTimer)
+      pingTimer = null
+    }
+  }
+
+  function stopStuckTimer() {
+    if (stuckTimer) {
+      clearTimeout(stuckTimer)
+      stuckTimer = null
+    }
+  }
+
   function stopReconnectTimer() {
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
@@ -115,102 +131,178 @@ export const useCsChatStore = defineStore('csChat', () => {
     }
   }
 
-  function killSource() {
-    const prev = source
-    source = null
-    if (!prev) return
-    prev.onopen = null
-    prev.onmessage = null
-    prev.onerror = null
-    prev.close()
+  function isBusy() {
+    return (
+      !!socket &&
+      (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)
+    )
   }
 
-  function handlePayload(data: {
-    type?: string
-    item?: Partial<CsMessage> | Partial<CsConversation>
-    conversation?: Partial<CsConversation>
-  }) {
-    if (data.type === 'ready' || data.type === 'ping') {
-      wsStatus.value = 'live'
-      backoffMs = 2000
-      return
-    }
-    if (data.type === 'message' && data.item) {
-      pushLiveMessage(data.item as Partial<CsMessage>)
-      if (data.conversation) upsertConversation(data.conversation)
-    } else if (data.type === 'conversation' && data.item) {
-      upsertConversation(data.item as Partial<CsConversation>)
+  function markLive(ws: WebSocket, myGen: number) {
+    if (myGen !== gen || socket !== ws) return
+    if (ws.readyState !== WebSocket.OPEN) return
+    stopReconnectTimer()
+    stopStuckTimer()
+    backoffMs = 4000
+    wsStatus.value = 'live'
+    stopPing()
+    pingTimer = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({ type: 'ping' }))
+        } catch {
+          /* ignore */
+        }
+      }
+    }, 20000)
+    if (watchedId.value) {
+      try {
+        ws.send(JSON.stringify({ type: 'watch', conversationId: watchedId.value }))
+      } catch {
+        /* ignore */
+      }
     }
   }
 
   function scheduleReconnect() {
     if (!alive) return
     wsStatus.value = 'retry'
-    if (reconnectTimer) return
+    if (reconnectTimer || isBusy()) return
     const wait = backoffMs
-    backoffMs = Math.min(Math.round(backoffMs * 1.5), 15000)
+    backoffMs = Math.min(Math.round(backoffMs * 1.6), 30000)
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null
       connect()
     }, wait)
   }
 
+  function killSocket() {
+    stopStuckTimer()
+    stopPing()
+    const prev = socket
+    socket = null
+    if (!prev) return
+    prev.onopen = null
+    prev.onmessage = null
+    prev.onerror = null
+    prev.onclose = null
+    try {
+      prev.close()
+    } catch {
+      /* ignore */
+    }
+  }
+
   function connect() {
     if (!alive) return
-    if (source && source.readyState !== EventSource.CLOSED) return
+    if (isBusy()) return
     if (reconnectTimer) return
 
+    stopPing()
     const myGen = ++gen
-    killSource()
-    const url = csEventsUrl()
+    killSocket()
+
+    const url = csWsUrl()
     if (!url.includes('token=')) {
       wsStatus.value = 'off'
       return
     }
 
     wsStatus.value = 'connecting'
-    let es: EventSource
+    let ws: WebSocket
     try {
-      es = new EventSource(url)
+      ws = new WebSocket(url)
     } catch {
       scheduleReconnect()
       return
     }
-    source = es
+    socket = ws
+    let gotReady = false
 
-    es.onopen = () => {
-      if (myGen !== gen || source !== es) return
-      // 等服务端 ready；onopen 只表示 HTTP 流已建立
-    }
+    stuckTimer = setTimeout(() => {
+      if (myGen !== gen || socket !== ws) return
+      if (!gotReady) {
+        try {
+          ws.close()
+        } catch {
+          /* ignore */
+        }
+      }
+    }, 10000)
 
-    es.onmessage = (ev) => {
-      if (myGen !== gen || source !== es) return
+    ws.onopen = () => {
       try {
-        handlePayload(JSON.parse(String(ev.data || '{}')))
+        ws.send(JSON.stringify({ type: 'ping' }))
       } catch {
         /* ignore */
       }
     }
 
-    es.onerror = () => {
+    ws.onmessage = (ev) => {
+      if (myGen !== gen || socket !== ws) return
+      try {
+        const data = JSON.parse(String(ev.data || '{}')) as {
+          type?: string
+          item?: Partial<CsMessage> | Partial<CsConversation>
+          conversation?: Partial<CsConversation>
+        }
+        if (data.type === 'ready') {
+          gotReady = true
+          markLive(ws, myGen)
+          return
+        }
+        if (data.type === 'ping') {
+          try {
+            ws.send(JSON.stringify({ type: 'pong' }))
+          } catch {
+            /* ignore */
+          }
+          return
+        }
+        if (data.type === 'pong' || data.type === 'watched') return
+        if (data.type === 'message' && data.item) {
+          pushLiveMessage(data.item as Partial<CsMessage>)
+          if (data.conversation) upsertConversation(data.conversation)
+        } else if (data.type === 'conversation' && data.item) {
+          upsertConversation(data.item as Partial<CsConversation>)
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    ws.onerror = () => {
+      /* 只靠 onclose */
+    }
+
+    ws.onclose = () => {
+      stopStuckTimer()
       if (myGen !== gen) return
-      killSource()
+      stopPing()
+      if (socket === ws) socket = null
       scheduleReconnect()
     }
   }
 
   function watchConversation(cid: string) {
     watchedId.value = cid || ''
+    if (socket?.readyState === WebSocket.OPEN && wsStatus.value === 'live') {
+      try {
+        socket.send(JSON.stringify({ type: 'watch', conversationId: watchedId.value }))
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   function start(hasPerm: boolean) {
     if (!hasPerm) return
     if (alive) {
-      if (!source || source.readyState === EventSource.CLOSED) connect()
+      if (!isBusy() && !reconnectTimer) connect()
       return
     }
     alive = true
-    backoffMs = 2000
+    backoffMs = 4000
     void reload().catch(() => undefined)
     connect()
     pollTimer = setInterval(() => {
@@ -222,12 +314,14 @@ export const useCsChatStore = defineStore('csChat', () => {
   function stop() {
     alive = false
     stopReconnectTimer()
+    stopStuckTimer()
+    stopPing()
     if (pollTimer) {
       clearInterval(pollTimer)
       pollTimer = null
     }
     gen += 1
-    killSource()
+    killSocket()
     wsStatus.value = 'off'
   }
 
