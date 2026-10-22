@@ -6,17 +6,28 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
+from app.config import ROOT
 from app.cs_chat import cs_conversation_out, cs_message_out
 from app.models import CsConversation, CsMessage
 
 logger = logging.getLogger(__name__)
+_DBG = ROOT / "cs_ws_debug.log"
 
 Role = Literal["user", "admin"]
+
+
+def _dbg(msg: str) -> None:
+    try:
+        with _DBG.open("a", encoding="utf-8") as f:
+            f.write(msg + "\n")
+    except Exception:
+        pass
 
 
 @dataclass
@@ -24,7 +35,12 @@ class CsPeer:
     ws: WebSocket
     role: Role
     conversation_ids: set[str] = field(default_factory=set)
-    _send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    _send_lock: asyncio.Lock | None = field(default=None, repr=False)
+
+    def lock(self) -> asyncio.Lock:
+        if self._send_lock is None:
+            self._send_lock = asyncio.Lock()
+        return self._send_lock
 
 
 class CsHub:
@@ -41,6 +57,7 @@ class CsHub:
         if conversation_id:
             peer.conversation_ids.add(conversation_id)
         self._peers.add(peer)
+        _dbg(f"accept role={role} client_state={ws.client_state} app_state={ws.application_state}")
         return peer
 
     def disconnect(self, peer: CsPeer) -> None:
@@ -50,15 +67,14 @@ class CsHub:
         peer.conversation_ids = {conversation_id} if conversation_id else set()
 
     async def send(self, peer: CsPeer, payload: dict[str, Any]) -> bool:
-        if peer.ws.client_state != WebSocketState.CONNECTED:
-            self.disconnect(peer)
-            return False
         try:
-            async with peer._send_lock:
-                await peer.ws.send_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+            text = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+            async with peer.lock():
+                await peer.ws.send_text(text)
             return True
-        except Exception:
-            logger.info("cs ws send failed, drop peer role=%s", peer.role, exc_info=True)
+        except Exception as e:
+            _dbg(f"send fail role={peer.role} type={payload.get('type')} err={e!r}")
+            logger.info("cs ws send failed role=%s", peer.role, exc_info=True)
             self.disconnect(peer)
             return False
 
@@ -146,11 +162,17 @@ cs_hub = CsHub()
 
 
 async def ws_receive_loop(peer: CsPeer, *, ready: dict[str, Any] | None = None) -> None:
-    """保持连接：先发 ready，再 receive_text 循环；发送统一加锁。"""
-    payload = {"type": "ready"}
+    """先无锁直接发 ready，再进入收发循环。"""
+    payload: dict[str, Any] = {"type": "ready"}
     if ready:
         payload.update(ready)
-    if not await cs_hub.send(peer, payload):
+    try:
+        # 首包不用锁，尽量在握手后立刻下发，避免客户端空消息重连
+        await peer.ws.send_text(json.dumps(payload, ensure_ascii=True, separators=(",", ":")))
+        _dbg(f"ready sent role={peer.role}")
+    except Exception as e:
+        _dbg(f"ready send fail role={peer.role} err={e!r}")
+        cs_hub.disconnect(peer)
         return
 
     async def _server_ping() -> None:
@@ -180,9 +202,10 @@ async def ws_receive_loop(peer: CsPeer, *, ready: dict[str, Any] | None = None) 
                 cid = str(data.get("conversationId") or data.get("conversation_id") or "").strip()
                 cs_hub.watch(peer, cid)
                 await cs_hub.send(peer, {"type": "watched", "conversationId": cid})
-    except WebSocketDisconnect:
-        pass
-    except Exception:
+    except WebSocketDisconnect as e:
+        _dbg(f"disconnect role={peer.role} code={getattr(e, 'code', '')}")
+    except Exception as e:
+        _dbg(f"loop err role={peer.role} err={e!r}")
         logger.info("cs ws loop ended role=%s", peer.role, exc_info=True)
     finally:
         ping_task.cancel()

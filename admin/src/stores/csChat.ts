@@ -232,7 +232,12 @@ export const useCsChatStore = defineStore('csChat', () => {
     }, 8000)
 
     ws.onopen = () => {
-      // 只表示协议握手成功；业务连通要等 ready
+      // 握手成功后主动打一声，促使服务端进入收包循环；真正 live 仍等 ready
+      try {
+        ws.send(JSON.stringify({ type: 'ping' }))
+      } catch {
+        /* ignore */
+      }
     }
 
     ws.onmessage = (ev) => {
