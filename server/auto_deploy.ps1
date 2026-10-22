@@ -65,7 +65,20 @@ function Sync-Tree([string]$Source, [string]$Destination) {
     $global:LASTEXITCODE = 0
 }
 
+function Remove-LeftoverApiTasks {
+    # 历史手动任务（如 HaokaUvicornOnce → start_haoka_uvicorn.bat）会重复拉起 API
+    foreach ($tn in @("HaokaUvicornOnce", "HaokaApi", "HaokaUvicornOld")) {
+        $t = Get-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue
+        if ($t) {
+            Disable-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue | Out-Null
+            Unregister-ScheduledTask -TaskName $tn -Confirm:$false -ErrorAction SilentlyContinue
+            Write-Log "removed leftover task $tn"
+        }
+    }
+}
+
 function Ensure-ApiTask {
+    Remove-LeftoverApiTasks
     $bat = Join-Path $AppRoot "start_api.bat"
     $existing = Get-ScheduledTask -TaskName "HaokaUvicorn" -ErrorAction SilentlyContinue
     if ($existing -and $existing.Actions.Count -gt 0 -and $existing.Actions[0].Execute -eq $bat) {
@@ -85,15 +98,14 @@ function Test-PortFree([int]$Port) {
 }
 
 function Stop-AllUvicorn {
-    # 先停计划任务，再杀所有 uvicorn（含误用系统 Python 起的进程）
+    # 停计划任务后结束所有 uvicorn 相关进程（含 Windows venv 启动器与基座解释器）
     schtasks /End /TN HaokaUvicorn 2>&1 | Out-Null
     Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
         Where-Object { $_.CommandLine -and ($_.CommandLine -match "uvicorn") } |
         ForEach-Object {
-            Write-Log ("stop uvicorn pid=" + $_.ProcessId + " cmd=" + $_.CommandLine)
+            Write-Log ("stop uvicorn pid=" + $_.ProcessId)
             Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
         }
-    # 等 443 真正释放，避免新旧进程抢端口导致 health 失败回滚
     for ($i = 0; $i -lt 20; $i++) {
         if (Test-PortFree 443) { return }
         Start-Sleep -Seconds 1
@@ -102,27 +114,24 @@ function Stop-AllUvicorn {
 }
 
 function Restart-Api {
-    # 禁用会用系统 Python 抢 443 的旧任务
-    foreach ($tn in @("HaokaUvicornOnce", "HaokaApi", "HaokaUvicornOld")) {
-        $t = Get-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue
-        if ($t) {
-            Disable-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue | Out-Null
-            schtasks /End /TN $tn 2>&1 | Out-Null
-            Write-Log "disabled leftover task $tn"
-        }
-    }
+    # 重要（Windows）：.venv\Scripts\python.exe 是启动器，会再拉起
+    # C:\Program Files\Python312\python.exe 作为子进程跑同一条 uvicorn 命令。
+    # 这是正常现象，不是两个服务抢端口。切勿在启动后按路径杀掉 Python312 子进程，
+    # 否则会把真正的工作进程杀掉，导致 health 失败并回滚。
+    Remove-LeftoverApiTasks
     Stop-AllUvicorn
     Start-Sleep -Seconds 1
     Start-ScheduledTask -TaskName "HaokaUvicorn"
-    Start-Sleep -Seconds 3
-    $procs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -and ($_.CommandLine -match "uvicorn") }
-    foreach ($p in @($procs)) {
-        if ($p.CommandLine -notmatch [regex]::Escape((Join-Path $AppRoot ".venv"))) {
-            Write-Log ("killing non-venv uvicorn pid=" + $p.ProcessId)
-            Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+    # 等进程起来并开始监听
+    for ($i = 0; $i -lt 15; $i++) {
+        Start-Sleep -Seconds 2
+        $listen = Get-NetTCPConnection -LocalPort 443 -State Listen -ErrorAction SilentlyContinue
+        if ($listen) {
+            Write-Log ("api listening on 443 owners=" + (($listen | Select-Object -ExpandProperty OwningProcess -Unique) -join ","))
+            return
         }
     }
+    Write-Log "warn: api not listening on 443 yet, Wait-Health will retry"
 }
 
 function Wait-Health {
