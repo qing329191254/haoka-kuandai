@@ -111,6 +111,7 @@
 import { computed, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
+import { Box, ChatDotRound, Guide, Iphone, List, Lock, Odometer } from '@element-plus/icons-vue'
 import { usePermission } from '@/composables/usePermission'
 import { useAdminStore } from '@/stores/admin'
 import { useCsChatStore } from '@/stores/csChat'

@@ -60,6 +60,9 @@ function asMessage(raw: Partial<CsMessage> | null | undefined): CsMessage | null
   }
 }
 
+/** WS 断线时的 HTTP 兜底间隔（live 时不轮询）。 */
+const POLL_FALLBACK_MS = 5000
+
 /** 后台客服实时：WebSocket（须收到服务端 ready 才算连通）。 */
 export const useCsChatStore = defineStore('csChat', () => {
   const conversations = ref<CsConversation[]>([])
@@ -117,6 +120,22 @@ export const useCsChatStore = defineStore('csChat', () => {
     }
   }
 
+  function stopPoll() {
+    if (pollTimer) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
+  }
+
+  /** 仅 WS 不可用时轮询会话列表；恢复 live 后立刻停。 */
+  function startPollFallback() {
+    if (!alive || pollTimer) return
+    pollTimer = setInterval(() => {
+      if (!alive || wsStatus.value === 'live') return
+      void reload().catch(() => undefined)
+    }, POLL_FALLBACK_MS)
+  }
+
   function stopStuckTimer() {
     if (stuckTimer) {
       clearTimeout(stuckTimer)
@@ -143,8 +162,11 @@ export const useCsChatStore = defineStore('csChat', () => {
     if (ws.readyState !== WebSocket.OPEN) return
     stopReconnectTimer()
     stopStuckTimer()
+    stopPoll()
     backoffMs = 4000
     wsStatus.value = 'live'
+    // 断线期间可能漏推，恢复后补一次列表
+    void reload().catch(() => undefined)
     stopPing()
     pingTimer = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -167,6 +189,7 @@ export const useCsChatStore = defineStore('csChat', () => {
   function scheduleReconnect() {
     if (!alive) return
     wsStatus.value = 'retry'
+    startPollFallback()
     if (reconnectTimer || isBusy()) return
     const wait = backoffMs
     backoffMs = Math.min(Math.round(backoffMs * 1.6), 30000)
@@ -299,16 +322,15 @@ export const useCsChatStore = defineStore('csChat', () => {
     if (!hasPerm) return
     if (alive) {
       if (!isBusy() && !reconnectTimer) connect()
+      if (wsStatus.value !== 'live') startPollFallback()
       return
     }
     alive = true
     backoffMs = 4000
     void reload().catch(() => undefined)
     connect()
-    pollTimer = setInterval(() => {
-      if (!alive) return
-      void reload().catch(() => undefined)
-    }, 15000)
+    // 尚未 live 前先兜底；markLive 后会停
+    startPollFallback()
   }
 
   function stop() {
@@ -316,10 +338,7 @@ export const useCsChatStore = defineStore('csChat', () => {
     stopReconnectTimer()
     stopStuckTimer()
     stopPing()
-    if (pollTimer) {
-      clearInterval(pollTimer)
-      pollTimer = null
-    }
+    stopPoll()
     gen += 1
     killSocket()
     wsStatus.value = 'off'
