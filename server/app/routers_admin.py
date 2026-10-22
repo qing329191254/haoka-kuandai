@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketException, status
+from fastapi.responses import StreamingResponse
 from starlette.websockets import WebSocketDisconnect
 from jwt import InvalidTokenError
 from sqlalchemy.orm import Session
@@ -594,9 +596,62 @@ def cs_conversation_close(
     return cs_conversation_out(conv)
 
 
+def _admin_cs_auth_from_token(token: str) -> dict:
+    raw = (token or "").strip()
+    if not raw:
+        raise HTTPException(401, "missing token")
+    try:
+        payload = decode_token(raw)
+    except InvalidTokenError:
+        raise HTTPException(401, "invalid token")
+    if payload.get("portal") != "admin":
+        raise HTTPException(403, "forbidden")
+    db = SessionLocal()
+    try:
+        staff = db.get(Staff, payload.get("sub") or "")
+        if not staff or staff.status != "active":
+            raise HTTPException(403, "forbidden")
+        role = db.get(Role, staff.role_id)
+        perms = json.loads(role.permissions or "[]") if role else []
+        if "*" not in perms and "feedback:view" not in perms:
+            raise HTTPException(403, "no permission")
+    finally:
+        db.close()
+    return payload
+
+
+@router.get("/cs/events")
+async def cs_admin_events(token: str = ""):
+    """管理端客服实时通道（SSE）。现网 WSS 下行常丢帧，后台改走 HTTPS 流。"""
+    _admin_cs_auth_from_token(token)
+    queue = cs_hub.subscribe_sse()
+
+    async def event_gen():
+        try:
+            yield f"data: {json.dumps({'type': 'ready'}, ensure_ascii=True)}\n\n"
+            while True:
+                try:
+                    payload = await asyncio.wait_for(queue.get(), timeout=20)
+                    yield f"data: {json.dumps(payload, ensure_ascii=True)}\n\n"
+                except asyncio.TimeoutError:
+                    yield f"data: {json.dumps({'type': 'ping'}, ensure_ascii=True)}\n\n"
+        finally:
+            cs_hub.unsubscribe_sse(queue)
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.websocket("/cs/ws")
 async def cs_admin_ws(websocket: WebSocket, token: str = ""):
-    """管理端客服实时通道。连接后可发 {"type":"watch","conversationId":"..."}。"""
+    """兼容旧 WS；管理端请优先用 /cs/events。"""
     raw = (token or "").strip()
     if not raw:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="missing token")
