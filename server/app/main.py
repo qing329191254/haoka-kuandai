@@ -134,6 +134,7 @@ def _deploy_zh(status_line: str, api_sha: str, admin_sha: str) -> tuple[str, str
     """返回 (code, 中文说明)。code: done / updating / failed / running。"""
     line = (status_line or "").strip()
     low = line.lower()
+    sha_mismatch = bool(api_sha and admin_sha and api_sha != admin_sha)
     # 失败优先
     if any(
         k in low
@@ -148,6 +149,19 @@ def _deploy_zh(status_line: str, api_sha: str, admin_sha: str) -> tuple[str, str
         )
     ):
         return "failed", "更新失败（已回滚或健康检查未通过）"
+    # 后台前端构建阶段（往往数分钟；后端可能已先就绪）
+    if any(
+        k in low
+        for k in (
+            "building admin",
+            "admin npm",
+            "admin vite",
+            "admin syncing",
+        )
+    ):
+        if sha_mismatch:
+            return "updating", "后端已就绪，正在打包后台前端（通常 1～3 分钟）"
+        return "updating", "正在打包后台前端，请稍候"
     # 正在真正部署中（不要把每分钟的 fetched 当成更新中）
     if any(
         k in low
@@ -155,18 +169,17 @@ def _deploy_zh(status_line: str, api_sha: str, admin_sha: str) -> tuple[str, str
             "deploy api",
             "pip install",
             "venv python",
-            "building admin",
             "cloning",
             "newer commit",
             "run again",
         )
     ):
-        return "updating", "更新中，请稍候再刷新"
+        return "updating", "更新中，请稍候"
     # 两端版本一致 = 已对齐最新部署
     if api_sha and admin_sha and api_sha == admin_sha:
         return "done", "更新完成"
-    if api_sha and admin_sha and api_sha != admin_sha:
-        return "updating", "后端已更新，后台前端还在更新或构建失败"
+    if sha_mismatch:
+        return "updating", "后端已更新，后台前端还在打包或上次构建失败"
     if any(k in low for k in ("api healthy", "api up to date", "admin_dist updated", "no api changes")):
         return "done", "更新完成"
     if api_sha:
@@ -213,6 +226,8 @@ def health(request: Request, format: str = ""):
         "failed": "#b91c1c",
         "running": "#1d4ed8",
     }.get(code, "#334155")
+    # 更新中 3 秒拉一次；完成/失败 20 秒即可
+    poll_ms = 3000 if code == "updating" else 20000
 
     def esc(s: str) -> str:
         return (
@@ -228,7 +243,6 @@ def health(request: Request, format: str = ""):
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="refresh" content="15" />
   <title>部署状态</title>
   <style>
     body {{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
@@ -237,7 +251,7 @@ def health(request: Request, format: str = ""):
     .card {{ width:min(520px,92vw); background:#fff; border-radius:20px; padding:36px 32px;
       box-shadow: 0 18px 50px rgba(15,23,42,.08); }}
     .label {{ font-size:14px; color:#64748b; margin-bottom:8px; }}
-    .status {{ font-size:36px; font-weight:700; color:{color}; line-height:1.25; margin:0 0 20px; }}
+    .status {{ font-size:28px; font-weight:700; color:{color}; line-height:1.35; margin:0 0 20px; }}
     .row {{ display:flex; justify-content:space-between; gap:12px; padding:10px 0;
       border-top:1px solid #e2e8f0; font-size:14px; }}
     .k {{ color:#64748b; flex-shrink:0; }} .v {{ font-family:ui-monospace,Consolas,monospace; text-align:right; word-break:break-all; }}
@@ -247,13 +261,41 @@ def health(request: Request, format: str = ""):
 <body>
   <div class="card">
     <div class="label">线上部署状态</div>
-    <p class="status">{esc(text)}</p>
-    <div class="row"><span class="k">后端版本</span><span class="v">{esc(short_api)}</span></div>
-    <div class="row"><span class="k">后台前端版本</span><span class="v">{esc(short_admin)}</span></div>
-    <div class="row"><span class="k">支付宝环境</span><span class="v">{esc(str(payload["alipayEnv"]))}</span></div>
-    <div class="row"><span class="k">最近日志</span><span class="v">{log_show}</span></div>
-    <p class="hint">页面每 15 秒自动刷新。看到「更新完成」且两个版本号一致，就是部署成功。</p>
+    <p class="status" id="statusText">{esc(text)}</p>
+    <div class="row"><span class="k">后端版本</span><span class="v" id="apiSha">{esc(short_api)}</span></div>
+    <div class="row"><span class="k">后台前端版本</span><span class="v" id="adminSha">{esc(short_admin)}</span></div>
+    <div class="row"><span class="k">支付宝环境</span><span class="v" id="alipayEnv">{esc(str(payload["alipayEnv"]))}</span></div>
+    <div class="row"><span class="k">最近日志</span><span class="v" id="deployStatus">{log_show}</span></div>
+    <p class="hint" id="hint">更新中约每 3 秒同步；完成后放慢。两个版本号一致且显示「更新完成」即成功。后台前端打包常比后端慢。</p>
   </div>
+  <script>
+  (function () {{
+    var colors = {{ done: "#15803d", updating: "#c2410c", failed: "#b91c1c", running: "#1d4ed8" }};
+    var timer = null;
+    function shortSha(s) {{ return (s || "无").slice(0, 7); }}
+    function apply(p) {{
+      var el = document.getElementById("statusText");
+      el.textContent = p.statusText || "";
+      el.style.color = colors[p.status] || "#334155";
+      document.getElementById("apiSha").textContent = shortSha(p.apiSha);
+      document.getElementById("adminSha").textContent = shortSha(p.adminSha);
+      document.getElementById("alipayEnv").textContent = p.alipayEnv || "";
+      document.getElementById("deployStatus").textContent = (p.deployStatus || "暂无").slice(0, 80);
+      schedule(p.status === "updating" ? 3000 : 20000);
+    }}
+    function schedule(ms) {{
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(tick, ms);
+    }}
+    function tick() {{
+      fetch("/health?format=json", {{ cache: "no-store" }})
+        .then(function (r) {{ return r.json(); }})
+        .then(apply)
+        .catch(function () {{ schedule(5000); }});
+    }}
+    schedule({poll_ms});
+  }})();
+  </script>
 </body>
 </html>"""
     return HTMLResponse(html)

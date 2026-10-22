@@ -203,11 +203,14 @@ function Update-Admin([string]$RemoteSha) {
     Push-Location (Join-Path $Repo "admin")
     try {
         Remove-Item Env:VITE_API_BASE -ErrorAction SilentlyContinue
+        Write-Log "admin npm ci"
         & $npm ci
         if ($LASTEXITCODE -ne 0) {
+            Write-Log "admin npm ci mirror"
             & $npm ci --registry https://registry.npmmirror.com
         }
         if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+        Write-Log "admin vite build"
         & $npm run build
         if ($LASTEXITCODE -ne 0) { throw "admin build failed" }
     } finally {
@@ -215,6 +218,7 @@ function Update-Admin([string]$RemoteSha) {
     }
     $dist = Join-Path $Repo "admin\dist"
     if (-not (Test-Path (Join-Path $dist "index.html"))) { throw "admin dist missing index.html" }
+    Write-Log "admin syncing dist"
     Sync-Tree $dist (Join-Path $AppRoot "admin_dist")
     Set-Content -Path $AdminShaPath -Value $RemoteSha -Encoding ASCII
     Write-Log "admin_dist updated"
