@@ -89,10 +89,11 @@ function Restart-Api {
 }
 
 function Wait-Health {
-    for ($i = 0; $i -lt 12; $i++) {
-        Start-Sleep -Seconds 2
+    # 重启 uvicorn/SSL 有时要半分钟以上；太短会误判失败并回滚，造成 /health「闪新又变旧」
+    for ($i = 0; $i -lt 30; $i++) {
+        Start-Sleep -Seconds 3
         try {
-            $health = & $Python -c "import ssl,urllib.request; ctx=ssl._create_unverified_context(); print(urllib.request.urlopen('https://127.0.0.1/health', context=ctx, timeout=8).read().decode())"
+            $health = & $Python -c "import ssl,urllib.request; ctx=ssl._create_unverified_context(); print(urllib.request.urlopen('https://127.0.0.1/health', context=ctx, timeout=10).read().decode())"
             if ($health -match '"ok"\s*:\s*true') { return $health.Trim() }
         } catch {
             continue
