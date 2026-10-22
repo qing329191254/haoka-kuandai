@@ -465,14 +465,13 @@ async def cs_app_ws(websocket: WebSocket, token: str = ""):
 
     try:
         peer = await cs_hub.connect(websocket, role="user", conversation_id=conv_id)
-        await websocket.send_json(
-            {
-                "type": "ready",
+        await ws_receive_loop(
+            peer,
+            ready={
                 "conversationId": conv_id,
                 "agentDisplayName": AGENT_DISPLAY_NAME,
-            }
+            },
         )
-        await ws_receive_loop(peer)
     finally:
         if peer is not None:
             cs_hub.disconnect(peer)

@@ -24,6 +24,7 @@ class CsPeer:
     ws: WebSocket
     role: Role
     conversation_ids: set[str] = field(default_factory=set)
+    _send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 class CsHub:
@@ -48,15 +49,21 @@ class CsHub:
     def watch(self, peer: CsPeer, conversation_id: str) -> None:
         peer.conversation_ids = {conversation_id} if conversation_id else set()
 
-    async def _safe_send(self, peer: CsPeer, payload: dict[str, Any]) -> None:
+    async def send(self, peer: CsPeer, payload: dict[str, Any]) -> bool:
         if peer.ws.client_state != WebSocketState.CONNECTED:
             self.disconnect(peer)
-            return
+            return False
         try:
-            await peer.ws.send_json(payload)
+            async with peer._send_lock:
+                await peer.ws.send_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+            return True
         except Exception:
-            logger.debug("cs ws send failed, drop peer", exc_info=True)
+            logger.info("cs ws send failed, drop peer role=%s", peer.role, exc_info=True)
             self.disconnect(peer)
+            return False
+
+    async def _safe_send(self, peer: CsPeer, payload: dict[str, Any]) -> None:
+        await self.send(peer, payload)
 
     async def _broadcast_message(
         self,
@@ -138,31 +145,26 @@ class CsHub:
 cs_hub = CsHub()
 
 
-async def ws_receive_loop(peer: CsPeer) -> None:
-    """保持连接：服务端定时 ping + 接收客户端 ping/watch。"""
+async def ws_receive_loop(peer: CsPeer, *, ready: dict[str, Any] | None = None) -> None:
+    """保持连接：先发 ready，再 receive_text 循环；发送统一加锁。"""
+    payload = {"type": "ready"}
+    if ready:
+        payload.update(ready)
+    if not await cs_hub.send(peer, payload):
+        return
 
     async def _server_ping() -> None:
         while True:
-            await asyncio.sleep(20)
+            await asyncio.sleep(25)
             if peer.ws.client_state != WebSocketState.CONNECTED:
                 return
-            try:
-                await peer.ws.send_json({"type": "ping"})
-            except Exception:
+            if not await cs_hub.send(peer, {"type": "ping"}):
                 return
 
     ping_task = asyncio.create_task(_server_ping())
     try:
         while True:
-            message = await peer.ws.receive()
-            mtype = message.get("type")
-            if mtype == "websocket.disconnect":
-                break
-            if mtype != "websocket.receive":
-                continue
-            text = message.get("text")
-            if not text:
-                continue
+            text = await peer.ws.receive_text()
             try:
                 data = json.loads(text)
             except Exception:
@@ -171,15 +173,17 @@ async def ws_receive_loop(peer: CsPeer) -> None:
                 continue
             typ = str(data.get("type") or "")
             if typ == "ping":
-                await peer.ws.send_json({"type": "pong"})
+                await cs_hub.send(peer, {"type": "pong"})
+            elif typ == "pong":
+                continue
             elif typ == "watch" and peer.role == "admin":
                 cid = str(data.get("conversationId") or data.get("conversation_id") or "").strip()
                 cs_hub.watch(peer, cid)
-                await peer.ws.send_json({"type": "watched", "conversationId": cid})
+                await cs_hub.send(peer, {"type": "watched", "conversationId": cid})
     except WebSocketDisconnect:
         pass
     except Exception:
-        logger.info("cs ws loop ended", exc_info=True)
+        logger.info("cs ws loop ended role=%s", peer.role, exc_info=True)
     finally:
         ping_task.cancel()
         try:

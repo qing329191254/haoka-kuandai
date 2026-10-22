@@ -60,7 +60,7 @@ function asMessage(raw: Partial<CsMessage> | null | undefined): CsMessage | null
   }
 }
 
-/** 后台客服：WS 优先；失败时 HTTP 轮询兜底，避免重连风暴掐断已连上的 socket。 */
+/** 后台客服 WS：只有收到服务端 ready 才算连通；101 不等于业务已连上。 */
 export const useCsChatStore = defineStore('csChat', () => {
   const conversations = ref<CsConversation[]>([])
   const liveMessages = ref<CsMessage[]>([])
@@ -146,11 +146,6 @@ export const useCsChatStore = defineStore('csChat', () => {
     backoffMs = 4000
     wsStatus.value = 'live'
     stopPing()
-    try {
-      ws.send(JSON.stringify({ type: 'ping' }))
-    } catch {
-      /* ignore */
-    }
     pingTimer = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
         try {
@@ -200,7 +195,6 @@ export const useCsChatStore = defineStore('csChat', () => {
 
   function connect() {
     if (!alive) return
-    // 已有连接或正在连：绝不强行掐线重开（这是之前重连风暴的根因）
     if (isBusy()) return
     if (reconnectTimer) return
 
@@ -223,20 +217,22 @@ export const useCsChatStore = defineStore('csChat', () => {
       return
     }
     socket = ws
+    let gotReady = false
 
+    // 8s 内必须收到服务端 ready，否则主动断开重试
     stuckTimer = setTimeout(() => {
       if (myGen !== gen || socket !== ws) return
-      if (ws.readyState === WebSocket.CONNECTING) {
+      if (!gotReady) {
         try {
           ws.close()
         } catch {
           /* ignore */
         }
       }
-    }, 15000)
+    }, 8000)
 
     ws.onopen = () => {
-      markLive(ws, myGen)
+      // 只表示协议握手成功；业务连通要等 ready
     }
 
     ws.onmessage = (ev) => {
@@ -247,17 +243,20 @@ export const useCsChatStore = defineStore('csChat', () => {
           item?: Partial<CsMessage> | Partial<CsConversation>
           conversation?: Partial<CsConversation>
         }
-        if (data.type === 'ready' || data.type === 'pong' || data.type === 'ping' || data.type === 'watched') {
+        if (data.type === 'ready') {
+          gotReady = true
           markLive(ws, myGen)
-          if (data.type === 'ping') {
-            try {
-              ws.send(JSON.stringify({ type: 'pong' }))
-            } catch {
-              /* ignore */
-            }
+          return
+        }
+        if (data.type === 'ping') {
+          try {
+            ws.send(JSON.stringify({ type: 'pong' }))
+          } catch {
+            /* ignore */
           }
           return
         }
+        if (data.type === 'pong' || data.type === 'watched') return
         if (data.type === 'message' && data.item) {
           pushLiveMessage(data.item as Partial<CsMessage>)
           if (data.conversation) upsertConversation(data.conversation)
@@ -270,7 +269,7 @@ export const useCsChatStore = defineStore('csChat', () => {
     }
 
     ws.onerror = () => {
-      /* 只靠 onclose 重连，避免 error+close 双触发 */
+      /* 只靠 onclose */
     }
 
     ws.onclose = () => {
@@ -284,7 +283,7 @@ export const useCsChatStore = defineStore('csChat', () => {
 
   function watchConversation(cid: string) {
     watchedId.value = cid || ''
-    if (socket?.readyState === WebSocket.OPEN) {
+    if (socket?.readyState === WebSocket.OPEN && wsStatus.value === 'live') {
       try {
         socket.send(JSON.stringify({ type: 'watch', conversationId: watchedId.value }))
       } catch {
@@ -303,14 +302,11 @@ export const useCsChatStore = defineStore('csChat', () => {
     backoffMs = 4000
     void reload().catch(() => undefined)
     connect()
-    // 列表/角标：WS 通时 20s 拉一次；不通时 5s，保证功能可用
+    // 列表兜底刷新（不替代 WS）
     pollTimer = setInterval(() => {
       if (!alive) return
       void reload().catch(() => undefined)
-      if (wsStatus.value !== 'live' && !isBusy() && !reconnectTimer) {
-        connect()
-      }
-    }, 5000)
+    }, 10000)
   }
 
   function stop() {

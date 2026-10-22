@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketException, status
 from starlette.websockets import WebSocketDisconnect
 from jwt import InvalidTokenError
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.cs_chat import (
     ADMIN_HISTORY_LIMIT,
@@ -619,13 +622,11 @@ async def cs_admin_ws(websocket: WebSocket, token: str = ""):
 
     try:
         peer = await cs_hub.connect(websocket, role="admin")
-        await websocket.send_json({"type": "ready"})
         await ws_receive_loop(peer)
     except WebSocketDisconnect:
         pass
     except Exception:
-        # 避免未捕获异常把连接打成异常关闭，触发浏览器疯狂重连
-        pass
+        logger.exception("admin cs ws failed")
     finally:
         if peer is not None:
             cs_hub.disconnect(peer)
