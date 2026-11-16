@@ -94,6 +94,38 @@ function Ensure-ApiTask {
     Write-Log "HaokaUvicorn uses $bat"
 }
 
+function Ensure-WatchdogTask {
+    # Every 2 minutes: if :443/health is dead while process may still be "running", restart API.
+    $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+    $script = Join-Path $Repo "server\watchdog_api.ps1"
+    if (-not (Test-Path $script)) {
+        Write-Log "watchdog script missing: $script"
+        return
+    }
+    $expected = "`"$powershell`" -NoProfile -ExecutionPolicy Bypass -File `"$script`""
+    $existing = Get-ScheduledTask -TaskName "HaokaApiWatchdog" -ErrorAction SilentlyContinue
+    if ($existing -and $existing.Actions.Count -gt 0) {
+        $cur = ($existing.Actions[0].Execute + " " + $existing.Actions[0].Arguments).Trim()
+        if ($cur -eq $expected.Trim()) { return }
+    }
+    $tr = $expected
+    schtasks /Create /F /TN HaokaApiWatchdog /SC MINUTE /MO 2 /RU SYSTEM /RL HIGHEST /TR $tr | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Log "failed to register HaokaApiWatchdog"
+        return
+    }
+    try {
+        $task = Get-ScheduledTask -TaskName HaokaApiWatchdog
+        $task.Settings.ExecutionTimeLimit = "PT10M"
+        $task.Settings.StartWhenAvailable = $true
+        $task.Settings.MultipleInstances = "IgnoreNew"
+        Set-ScheduledTask -InputObject $task | Out-Null
+    } catch {
+        Write-Log "HaokaApiWatchdog registered; extra settings left at defaults"
+    }
+    Write-Log "HaokaApiWatchdog registered (every 2 min)"
+}
+
 function Test-PortFree([int]$Port) {
     $listeners = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
     return -not $listeners
@@ -267,6 +299,7 @@ try {
     }
 
     Ensure-ApiTask
+    Ensure-WatchdogTask
     $rounds = 0
     while ($rounds -lt 3) {
     $rounds++

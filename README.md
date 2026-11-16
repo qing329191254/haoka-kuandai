@@ -132,7 +132,7 @@ cd ../server
 python copy_admin.py
 ```
 
-Windows 云主机现网由 `server/start_api.bat` 启动（`0.0.0.0:443` + HTTPS 证书），计划任务名 `HaokaUvicorn`；代码更新走 `auto_deploy.ps1` 拉 `main` 后自动重启。对外域名如 `https://www.lcnh-platform.cn`。`.env` 中 `PUBLIC_BASE_URL` 填该 HTTPS 地址。健康检查里 `admin: true` 表示前端已拷入 `server/admin_dist`。首次装机可参考 `setup_prod.ps1`，但端口/证书以 `start_api.bat` 为准，不要再起 8888。
+Windows 云主机现网由 `server/start_api.bat` 启动（`0.0.0.0:443` + HTTPS 证书），计划任务名 `HaokaUvicorn`；代码更新走 `auto_deploy.ps1` 拉 `main` 后自动重启。另有 `HaokaApiWatchdog`（每 2 分钟）检查本机 `/health` 与 443 监听，发现假活则自动重启 API，日志在 `C:\haoka\server\watchdog.log`。对外域名如 `https://www.lcnh-platform.cn`。`.env` 中 `PUBLIC_BASE_URL` 填该 HTTPS 地址。健康检查里 `admin: true` 表示前端已拷入 `server/admin_dist`。首次装机可参考 `setup_prod.ps1`，但端口/证书以 `start_api.bat` 为准，不要再起 8888。
 
 ### 小程序（微信）
 
